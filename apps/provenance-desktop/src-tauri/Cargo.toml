@@ -1,0 +1,23 @@
+[package]
+name = "provenance-desktop"
+version = "0.1.0"
+description = "Provenance desktop app"
+authors = ["vittoridavide"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2.5.4", features = [] }
+
+[dependencies]
+tauri = { version = "2.10.0", features = [] }
+tauri-plugin-log = "2"
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+
+provenance-core = { path = "../../../crates/provenance-core" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

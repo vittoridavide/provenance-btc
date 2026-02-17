@@ -111,7 +111,7 @@ The core logic is UI-agnostic and reusable.
 
 Phase 1: Analysis & Reconstruction
 
-* [ ] Bitcoin Core RPC connectivity
+* [x] Bitcoin Core RPC connectivity
 * [ ] Transaction inspection
 * [ ] Recursive ancestry tracing
 * [ ] Local label storage

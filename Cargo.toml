@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "apps/provenance-desktop/src-tauri",
+    "crates/provenance-core"
+]
+resolver = "2"

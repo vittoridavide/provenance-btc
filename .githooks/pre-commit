@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+echo "[pre-commit] cargo fmt --all -- --check"
+if ! cargo fmt --all -- --check; then
+  echo "[pre-commit] formatting check failed. Run: cargo fmt --all" >&2
+  echo "[pre-commit] If rustfmt is missing: rustup component add rustfmt" >&2
+  exit 1
+fi
+
+echo "[pre-commit] cargo clippy --workspace --all-targets --all-features -- -D warnings"
+if ! cargo clippy --workspace --all-targets --all-features -- -D warnings; then
+  echo "[pre-commit] cargo clippy failed. Do you have clippy installed?" >&2
+  echo "[pre-commit] Try: rustup component add clippy" >&2
+  exit 1
+fi
