@@ -1,9 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use provenance_core::model::tx_view::TxView;
 use provenance_core::rpc::client::{CoreRpc, RpcAuth, RpcConfig};
 use provenance_core::rpc::types::CoreStatus;
-use provenance_core::model::tx_view::TxView;
 
 use std::sync::{Arc, RwLock};
 
@@ -62,10 +62,7 @@ async fn cmd_core_status(state: tauri::State<'_, AppState>) -> Result<CoreStatus
 }
 
 #[tauri::command]
-async fn cmd_fetch_tx(
-    state: tauri::State<'_, AppState>,
-    txid: String,
-) -> Result<TxView, String> {
+async fn cmd_fetch_tx(state: tauri::State<'_, AppState>, txid: String) -> Result<TxView, String> {
     let cfg = state
         .rpc_config
         .read()
@@ -78,8 +75,8 @@ async fn cmd_fetch_tx(
         rpc.fetch_tx_view(&txid)
             .map_err(|e| format!("Failed to fetch tx: {e}"))
     })
-        .await
-        .map_err(|e| format!("Join error: {e}"))?
+    .await
+    .map_err(|e| format!("Join error: {e}"))?
 }
 
 fn main() {

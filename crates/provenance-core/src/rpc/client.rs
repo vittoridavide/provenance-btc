@@ -61,6 +61,36 @@ pub enum RpcAuth {
 }
 
 impl RpcConfig {
+    /// Build a config from environment variables.
+    ///
+    /// Expected variables:
+    /// - `PROVENANCE_RPC_URL`
+    /// - Either (`PROVENANCE_RPC_USER` + `PROVENANCE_RPC_PASS`) or `PROVENANCE_RPC_COOKIE`
+    ///
+    /// Returns `Ok(None)` if `PROVENANCE_RPC_URL` is not set.
+    pub fn from_env() -> Result<Option<Self>> {
+        fn env(name: &str) -> Option<String> {
+            std::env::var(name).ok().filter(|s| !s.trim().is_empty())
+        }
+
+        let url = match env("PROVENANCE_RPC_URL") {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        let auth = if let (Some(username), Some(password)) =
+            (env("PROVENANCE_RPC_USER"), env("PROVENANCE_RPC_PASS"))
+        {
+            RpcAuth::UserPass { username, password }
+        } else if let Some(path) = env("PROVENANCE_RPC_COOKIE") {
+            RpcAuth::CookieFile { path }
+        } else {
+            return Err(CoreError::MissingAuth);
+        };
+
+        Ok(Some(Self { url, auth }))
+    }
+
     pub fn to_auth(&self) -> Result<Auth> {
         match &self.auth {
             RpcAuth::UserPass { username, password } => {
@@ -76,6 +106,22 @@ pub struct CoreRpc {
 }
 
 impl CoreRpc {
+    /// Fetch raw transaction hex (`getrawtransaction <txid> false`).
+    pub fn get_raw_transaction_hex(&self, txid: &Txid) -> Result<String> {
+        let params = serde_json::json!([txid, false]);
+        self.client
+            .call("getrawtransaction", params.as_array().unwrap())
+            .map_err(crate::error::CoreError::Rpc)
+    }
+
+    /// Same as [`CoreRpc::get_raw_transaction_hex`], but accepts a string txid.
+    pub fn get_raw_transaction_hex_str(&self, txid: &str) -> Result<String> {
+        let txid: Txid = txid
+            .parse()
+            .map_err(|e| crate::error::CoreError::Other(format!("Invalid txid: {e}")))?;
+        self.get_raw_transaction_hex(&txid)
+    }
+
     fn fetch_tx_verbose(&self, txid: &Txid) -> Result<serde_json::Value> {
         let params = serde_json::json!([txid, true]);
         self.client
@@ -169,8 +215,8 @@ impl CoreRpc {
         };
 
         // weight/vsize
-        let weight: u64 = tx.weight().to_wu() as u64;
-        let vsize: u64 = ((weight + 3) / 4) as u64;
+        let weight: u64 = tx.weight().to_wu();
+        let vsize: u64 = weight.div_ceil(4);
 
         let outputs = tx
             .output
@@ -201,13 +247,12 @@ impl CoreRpc {
                 // fetch prev tx (cached)
                 let prev_tx = get_tx(prev_txid)?;
 
-                let prev_out = prev_tx
-                    .output
-                    .get(vout)
-                    .ok_or_else(|| crate::error::CoreError::Other(format!(
+                let prev_out = prev_tx.output.get(vout).ok_or_else(|| {
+                    crate::error::CoreError::Other(format!(
                         "Prevout vout={} not found in tx {}",
                         vout, prev_txid
-                    )))?;
+                    ))
+                })?;
 
                 Ok(TxInpView {
                     vin: i as u32,

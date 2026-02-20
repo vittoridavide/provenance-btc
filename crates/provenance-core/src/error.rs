@@ -5,6 +5,9 @@ pub enum CoreError {
     #[error("RPC error: {0}")]
     Rpc(#[from] bitcoincore_rpc::Error),
 
+    #[error("SQLite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+
     #[error("Invalid RPC URL: {0}")]
     InvalidUrl(String),
 

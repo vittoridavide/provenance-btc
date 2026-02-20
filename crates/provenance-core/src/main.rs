@@ -1,8 +1,8 @@
 use dotenv::dotenv;
 use std::env;
 mod error;
-pub mod rpc;
 pub mod model;
+pub mod rpc;
 
 fn main() {
     dotenv().ok();
