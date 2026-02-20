@@ -2,6 +2,7 @@ use dotenv::dotenv;
 use std::env;
 mod error;
 pub mod rpc;
+pub mod model;
 
 fn main() {
     dotenv().ok();

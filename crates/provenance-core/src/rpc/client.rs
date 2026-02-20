@@ -1,3 +1,11 @@
+use bitcoin::consensus::encode::deserialize;
+use bitcoin::{Network, Transaction, Txid};
+
+use crate::model::helpers::{address_from_spk, classify_script_type, network_from_chain};
+use crate::model::tx_view::{TxInpView, TxOutView, TxView};
+
+use std::{collections::HashMap, sync::Arc};
+
 use crate::error::{CoreError, Result};
 use crate::rpc::indexinfo::parse_indexinfo;
 use crate::rpc::types::CoreStatus;
@@ -68,6 +76,169 @@ pub struct CoreRpc {
 }
 
 impl CoreRpc {
+    fn fetch_tx_verbose(&self, txid: &Txid) -> Result<serde_json::Value> {
+        let params = serde_json::json!([txid, true]);
+        self.client
+            .call("getrawtransaction", params.as_array().unwrap())
+            .map_err(crate::error::CoreError::Rpc)
+    }
+
+    fn tx_from_verbose_value(&self, v: &serde_json::Value) -> Result<Transaction> {
+        let hex_str = v
+            .get("hex")
+            .and_then(|x| x.as_str())
+            .ok_or_else(|| crate::error::CoreError::Other("RPC response missing 'hex'".into()))?;
+
+        let raw = hex::decode(hex_str)
+            .map_err(|e| crate::error::CoreError::Other(format!("Invalid tx hex: {e}")))?;
+
+        deserialize(&raw)
+            .map_err(|e| crate::error::CoreError::Other(format!("Failed to parse tx: {e}")))
+    }
+
+    fn fetch_tx(&self, txid: &Txid) -> Result<Transaction> {
+        let v = self.fetch_tx_verbose(txid)?;
+        self.tx_from_verbose_value(&v)
+    }
+
+    fn current_network(&self) -> Result<Option<Network>> {
+        let chain_v: serde_json::Value = self.client.call("getblockchaininfo", &[])?;
+        let chain = chain_v
+            .get("chain")
+            .and_then(|x| x.as_str())
+            .unwrap_or("main");
+        Ok(network_from_chain(chain))
+    }
+
+    fn block_header_meta(&self, blockhash: &str) -> Result<(Option<u32>, Option<u64>)> {
+        // getblockheader <hash> true
+        let params = serde_json::json!([blockhash, true]);
+        let hdr_v: serde_json::Value = self
+            .client
+            .call("getblockheader", params.as_array().unwrap())
+            .map_err(crate::error::CoreError::Rpc)?;
+
+        let height = hdr_v
+            .get("height")
+            .and_then(|x| x.as_u64())
+            .map(|n| n as u32);
+        let time = hdr_v.get("time").and_then(|x| x.as_u64());
+        Ok((height, time))
+    }
+
+    pub fn fetch_tx_view(&self, txid_str: &str) -> crate::error::Result<TxView> {
+        let mut tx_cache: HashMap<Txid, Arc<Transaction>> = HashMap::new();
+
+        // Validate txid format early (better error messages)
+        let txid: Txid = txid_str
+            .parse()
+            .map_err(|e| crate::error::CoreError::Other(format!("Invalid txid: {e}")))?;
+
+        // Fetch verbose once for the *main* tx so we can also read confirmation/block metadata.
+        let main_v = self.fetch_tx_verbose(&txid)?;
+        let tx = Arc::new(self.tx_from_verbose_value(&main_v)?);
+        tx_cache.insert(txid, Arc::clone(&tx));
+
+        // Helper for fetching *previous* transactions (cached). Defined after inserting the main tx
+        // so we don't fight the borrow checker.
+        let mut get_tx = |txid: Txid| -> Result<Arc<Transaction>> {
+            if let Some(tx) = tx_cache.get(&txid) {
+                return Ok(Arc::clone(tx));
+            }
+            let prev = Arc::new(self.fetch_tx(&txid)?);
+            tx_cache.insert(txid, Arc::clone(&prev));
+            Ok(prev)
+        };
+
+        let network = self.current_network()?;
+
+        // Confirmation metadata
+        let confirmations = main_v
+            .get("confirmations")
+            .and_then(|x| x.as_u64())
+            .map(|n| n as u32);
+        let blockhash = main_v
+            .get("blockhash")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+
+        let (block_height, block_time) = if let Some(ref bh) = blockhash {
+            self.block_header_meta(bh)?
+        } else {
+            (None, None)
+        };
+
+        // weight/vsize
+        let weight: u64 = tx.weight().to_wu() as u64;
+        let vsize: u64 = ((weight + 3) / 4) as u64;
+
+        let outputs = tx
+            .output
+            .iter()
+            .enumerate()
+            .map(|(i, o)| {
+                let script_type = classify_script_type(&o.script_pubkey);
+                let address = network.and_then(|net| address_from_spk(&o.script_pubkey, net));
+
+                TxOutView {
+                    vout: i as u32,
+                    value_sat: o.value.to_sat(),
+                    script_pubkey_hex: o.script_pubkey.to_hex_string(),
+                    script_type,
+                    address,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let inputs = tx
+            .input
+            .iter()
+            .enumerate()
+            .map(|(i, inp)| {
+                let prev_txid = inp.previous_output.txid;
+                let vout = inp.previous_output.vout as usize;
+
+                // fetch prev tx (cached)
+                let prev_tx = get_tx(prev_txid)?;
+
+                let prev_out = prev_tx
+                    .output
+                    .get(vout)
+                    .ok_or_else(|| crate::error::CoreError::Other(format!(
+                        "Prevout vout={} not found in tx {}",
+                        vout, prev_txid
+                    )))?;
+
+                Ok(TxInpView {
+                    vin: i as u32,
+                    prev_txid: prev_txid.to_string(),
+                    prev_vout: inp.previous_output.vout,
+                    value_sat: prev_out.value.to_sat(), // bitcoin crate Amount => sats
+                    script_pubkey_hex: prev_out.script_pubkey.to_hex_string(),
+                    script_type: classify_script_type(&prev_out.script_pubkey),
+                    script_sig_hex: inp.script_sig.to_hex_string(),
+                    witness_items_count: inp.witness.len(),
+                    witness_hex: inp.witness.iter().map(hex::encode).collect(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(TxView {
+            txid: txid.to_string(),
+            version: tx.version.0,
+            lock_time: tx.lock_time.to_consensus_u32(),
+            inputs_count: tx.input.len(),
+            outputs,
+            inputs,
+            weight,
+            vsize,
+            confirmations,
+            blockhash,
+            block_height,
+            block_time,
+        })
+    }
+
     pub fn new(cfg: &RpcConfig) -> Result<Self> {
         if cfg.url.trim().is_empty() {
             return Err(CoreError::InvalidUrl("empty url".into()));

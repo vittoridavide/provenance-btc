@@ -1,5 +1,5 @@
 .container {
-  max-width: 600px;
+  max-width: 800px;
   margin: 0 auto;
   padding: 2rem;
 }
@@ -10,11 +10,36 @@ h1 {
   color: #f7931a;
 }
 
-.chain-info {
+h2 {
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.chain-info,
+.tx-view {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   padding: 1.5rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section {
+  margin-top: 2rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.text-input {
+  flex: 1;
+  padding: 0.6em 0.8em;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-family: monospace;
 }
 
 .info-item {
@@ -30,18 +55,47 @@ h1 {
 
 .info-item label {
   font-weight: 600;
-  color: rgba(0, 0, 0);
 }
 
 .info-item .value {
   font-family: monospace;
-  color: rgba(0, 0, 0);
 }
 
 .info-item .value.chain {
   text-transform: uppercase;
   font-weight: bold;
   color: #f7931a;
+}
+
+.mono {
+  font-family: monospace;
+}
+
+.outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.output {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.output-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.output-script {
+  word-break: break-all;
+  opacity: 0.9;
 }
 
 .error {

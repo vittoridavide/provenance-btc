@@ -2814,6 +2814,7 @@ dependencies = [
  "bitcoin 0.32.8",
  "bitcoincore-rpc",
  "dotenv",
+ "hex",
  "rusqlite",
  "serde",
  "serde_json",

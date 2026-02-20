@@ -3,6 +3,8 @@
 
 use provenance_core::rpc::client::{CoreRpc, RpcAuth, RpcConfig};
 use provenance_core::rpc::types::CoreStatus;
+use provenance_core::model::tx_view::TxView;
+
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
@@ -59,6 +61,27 @@ async fn cmd_core_status(state: tauri::State<'_, AppState>) -> Result<CoreStatus
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn cmd_fetch_tx(
+    state: tauri::State<'_, AppState>,
+    txid: String,
+) -> Result<TxView, String> {
+    let cfg = state
+        .rpc_config
+        .read()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| "RPC not configured. Call cmd_set_rpc_config first.".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let rpc = CoreRpc::new(&cfg).map_err(|e| format!("Failed to connect: {e}"))?;
+        rpc.fetch_tx_view(&txid)
+            .map_err(|e| format!("Failed to fetch tx: {e}"))
+    })
+        .await
+        .map_err(|e| format!("Join error: {e}"))?
+}
+
 fn main() {
     let state = AppState {
         rpc_config: Arc::new(RwLock::new(None)),
@@ -68,7 +91,8 @@ fn main() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             cmd_set_rpc_config,
-            cmd_core_status
+            cmd_core_status,
+            cmd_fetch_tx
         ])
         .run(tauri::generate_context!())
         .expect("error running Tauri");
