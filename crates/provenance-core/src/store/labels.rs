@@ -58,7 +58,7 @@ pub fn get_labels_by_type(conn: &Connection, ref_type: &str) -> Result<Vec<Label
         "SELECT ref_type, ref_id, label, created_at, updated_at
          FROM labels
          WHERE ref_type = ?1
-         ORDER BY updated_at DESC",
+         ORDER BY ref_id ASC",
     )?;
 
     let rows = stmt.query_map(params![ref_type], |row| {
@@ -78,6 +78,15 @@ pub fn get_labels_by_type(conn: &Connection, ref_type: &str) -> Result<Vec<Label
     Ok(labels)
 }
 
+/// Return all transaction labels.
+pub fn get_tx_labels(conn: &Connection) -> Result<Vec<Label>> {
+    get_labels_by_type(conn, "tx")
+}
+
+/// Return all output labels.
+pub fn get_output_labels(conn: &Connection) -> Result<Vec<Label>> {
+    get_labels_by_type(conn, "output")
+}
 /// Delete a label. Returns `true` if a row was actually removed.
 pub fn delete_label(conn: &Connection, ref_type: &str, ref_id: &str) -> Result<bool> {
     let changed = conn.execute(
@@ -85,4 +94,44 @@ pub fn delete_label(conn: &Connection, ref_type: &str, ref_id: &str) -> Result<b
         params![ref_type, ref_id],
     )?;
     Ok(changed > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::store::db::Database;
+
+    use super::{get_output_labels, get_tx_labels, set_label};
+
+    const TXID_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const TXID_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    #[test]
+    fn list_queries_return_correct_tx_and_output_sets() {
+        let db = Database::open(":memory:").expect("db opens");
+        let conn = db.conn();
+
+        set_label(conn, "tx", TXID_B, "tx-b").expect("insert tx-b");
+        set_label(conn, "output", &format!("{TXID_A}:1"), "out-1").expect("insert out-1");
+        set_label(conn, "tx", TXID_A, "tx-a").expect("insert tx-a");
+        set_label(conn, "output", &format!("{TXID_A}:0"), "out-0").expect("insert out-0");
+
+        let tx_labels = get_tx_labels(conn).expect("query tx");
+        let tx_refs: Vec<&str> = tx_labels
+            .iter()
+            .map(|label| label.ref_id.as_str())
+            .collect();
+        assert_eq!(tx_refs, vec![TXID_A, TXID_B]);
+        assert!(tx_labels.iter().all(|label| label.ref_type == "tx"));
+
+        let output_labels = get_output_labels(conn).expect("query output");
+        let output_refs: Vec<String> = output_labels
+            .iter()
+            .map(|label| label.ref_id.clone())
+            .collect();
+        assert_eq!(
+            output_refs,
+            vec![format!("{TXID_A}:0"), format!("{TXID_A}:1")]
+        );
+        assert!(output_labels.iter().all(|label| label.ref_type == "output"));
+    }
 }
