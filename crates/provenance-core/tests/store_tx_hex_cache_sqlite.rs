@@ -1,8 +1,10 @@
+use provenance_core::store::db::Database;
 use provenance_core::store::tx_hex_cache::TxHexCache;
 
 #[test]
 fn tx_hex_cache_round_trip_in_memory() {
-    let cache = TxHexCache::open(":memory:").expect("should open in-memory db");
+    let db = Database::open(":memory:").expect("should open in-memory db");
+    let cache = TxHexCache::new(db.conn());
 
     let txid = "0000000000000000000000000000000000000000000000000000000000000001"
         .parse()
@@ -17,7 +19,7 @@ fn tx_hex_cache_round_trip_in_memory() {
 #[test]
 fn tx_hex_cache_persists_between_reopens() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("cache.sqlite");
+    let path = dir.path().join("provenance.sqlite");
     let path_str = path.to_str().unwrap();
 
     let txid = "0000000000000000000000000000000000000000000000000000000000000002"
@@ -25,12 +27,14 @@ fn tx_hex_cache_persists_between_reopens() {
         .unwrap();
 
     {
-        let cache = TxHexCache::open(path_str).unwrap();
+        let db = Database::open(path_str).unwrap();
+        let cache = TxHexCache::new(db.conn());
         cache.put(&txid, "cafebabe").unwrap();
     }
 
     {
-        let cache2 = TxHexCache::open(path_str).unwrap();
-        assert_eq!(cache2.get(&txid).unwrap().as_deref(), Some("cafebabe"));
+        let db = Database::open(path_str).unwrap();
+        let cache = TxHexCache::new(db.conn());
+        assert_eq!(cache.get(&txid).unwrap().as_deref(), Some("cafebabe"));
     }
 }

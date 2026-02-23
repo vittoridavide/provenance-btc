@@ -4,6 +4,7 @@ use provenance_core::provenance::trace::{
     trace_ancestry_cache_first, TraceOptions, TxHexCacheMetrics,
 };
 use provenance_core::rpc::client::{CoreRpc, RpcConfig};
+use provenance_core::store::db::Database;
 use provenance_core::store::tx_hex_cache::TxHexCache;
 
 fn usage() -> ! {
@@ -94,10 +95,11 @@ fn main() {
         std::process::exit(1)
     });
 
-    let cache = TxHexCache::open(&cache_path).unwrap_or_else(|e| {
-        eprintln!("Failed to open cache at {cache_path}: {e}");
+    let db = Database::open(&cache_path).unwrap_or_else(|e| {
+        eprintln!("Failed to open database at {cache_path}: {e}");
         std::process::exit(1)
     });
+    let cache = TxHexCache::new(db.conn());
 
     let mut metrics = TxHexCacheMetrics::default();
     let graph = trace_ancestry_cache_first(

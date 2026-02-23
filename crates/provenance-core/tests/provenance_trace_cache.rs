@@ -6,6 +6,7 @@ use bitcoin::Txid;
 use provenance_core::provenance::trace::{
     trace_ancestry_cache_first, TraceOptions, TxHexCacheMetrics,
 };
+use provenance_core::store::db::Database;
 use provenance_core::store::tx_hex_cache::TxHexCache;
 
 fn txid(hex: &str) -> Txid {
@@ -67,7 +68,8 @@ fn second_trace_uses_cache_instead_of_remote_fetch() {
     let fixtures: HashMap<Txid, String> =
         HashMap::from([(a, tx_a), (b, tx_b), (c, tx_c), (d, tx_d)]);
 
-    let cache = TxHexCache::open(":memory:").unwrap();
+    let db = Database::open(":memory:").unwrap();
+    let cache = TxHexCache::new(db.conn());
 
     let remote_calls: RefCell<u64> = RefCell::new(0);
     let remote = |txid: &Txid| {

@@ -3,27 +3,17 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::Result;
 
-/// Tiny SQLite-backed cache for raw transaction hex.
-#[derive(Debug)]
-pub struct TxHexCache {
-    conn: Connection,
+/// Thin query helper for the `tx_hex_cache` table.
+///
+/// The table itself is created by [`super::db::Database`] migrations.
+/// This struct just borrows a `&Connection` and runs queries against it.
+pub struct TxHexCache<'a> {
+    conn: &'a Connection,
 }
 
-impl TxHexCache {
-    pub fn open(path: &str) -> Result<Self> {
-        let conn = Connection::open(path)?;
-        Self::init(&conn)?;
-        Ok(Self { conn })
-    }
-
-    fn init(conn: &Connection) -> Result<()> {
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS tx_hex_cache (\
-                txid TEXT PRIMARY KEY,\
-                hex  TEXT NOT NULL\
-            );",
-        )?;
-        Ok(())
+impl<'a> TxHexCache<'a> {
+    pub fn new(conn: &'a Connection) -> Self {
+        Self { conn }
     }
 
     pub fn get(&self, txid: &Txid) -> Result<Option<String>> {
@@ -38,9 +28,8 @@ impl TxHexCache {
     }
 
     pub fn put(&self, txid: &Txid, hex: &str) -> Result<()> {
-        // Upsert so repeated fetches just refresh the value.
         self.conn.execute(
-            "INSERT INTO tx_hex_cache (txid, hex) VALUES (?1, ?2)\
+            "INSERT INTO tx_hex_cache (txid, hex) VALUES (?1, ?2)
              ON CONFLICT(txid) DO UPDATE SET hex = excluded.hex",
             params![txid.to_string(), hex],
         )?;
