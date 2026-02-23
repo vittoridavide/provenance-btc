@@ -2,7 +2,9 @@ use bitcoin::consensus::encode::deserialize;
 use bitcoin::{Network, Transaction, Txid};
 
 use crate::model::helpers::{address_from_spk, classify_script_type, network_from_chain};
-use crate::model::tx_view::{TxInpView, TxOutView, TxView};
+use crate::model::tx_view::{
+    calculate_fee_sat, calculate_feerate_sat_vb, TxInpView, TxOutView, TxView,
+};
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -236,37 +238,59 @@ impl CoreRpc {
             })
             .collect::<Vec<_>>();
 
-        let inputs = tx
-            .input
-            .iter()
-            .enumerate()
-            .map(|(i, inp)| {
-                let prev_txid = inp.previous_output.txid;
-                let vout = inp.previous_output.vout as usize;
-
-                // fetch prev tx (cached)
-                let prev_tx = get_tx(prev_txid)?;
-
-                let prev_out = prev_tx.output.get(vout).ok_or_else(|| {
-                    crate::error::CoreError::Other(format!(
-                        "Prevout vout={} not found in tx {}",
-                        vout, prev_txid
-                    ))
-                })?;
-
-                Ok(TxInpView {
+        let mut inputs = Vec::<TxInpView>::with_capacity(tx.input.len());
+        for (i, inp) in tx.input.iter().enumerate() {
+            if inp.previous_output.is_null() {
+                // Coinbase input has no prevout to resolve.
+                inputs.push(TxInpView {
                     vin: i as u32,
-                    prev_txid: prev_txid.to_string(),
+                    prev_txid: inp.previous_output.txid.to_string(),
                     prev_vout: inp.previous_output.vout,
-                    value_sat: prev_out.value.to_sat(), // bitcoin crate Amount => sats
-                    script_pubkey_hex: prev_out.script_pubkey.to_hex_string(),
-                    script_type: classify_script_type(&prev_out.script_pubkey),
+                    value_sat: None,
+                    script_pubkey_hex: String::new(),
+                    script_type: None,
                     script_sig_hex: inp.script_sig.to_hex_string(),
                     witness_items_count: inp.witness.len(),
                     witness_hex: inp.witness.iter().map(hex::encode).collect(),
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+                    is_coinbase: true,
+                });
+                continue;
+            }
+
+            let prev_txid = inp.previous_output.txid;
+            let vout = inp.previous_output.vout as usize;
+
+            // Graceful degradation: if parent tx/prevout can't be resolved, keep the input with
+            // unknown value/script instead of failing the whole tx view.
+            let (value_sat, script_pubkey_hex, script_type) = match get_tx(prev_txid) {
+                Ok(prev_tx) => match prev_tx.output.get(vout) {
+                    Some(prev_out) => (
+                        Some(prev_out.value.to_sat()),
+                        prev_out.script_pubkey.to_hex_string(),
+                        classify_script_type(&prev_out.script_pubkey),
+                    ),
+                    None => (None, String::new(), None),
+                },
+                Err(_) => (None, String::new(), None),
+            };
+
+            inputs.push(TxInpView {
+                vin: i as u32,
+                prev_txid: prev_txid.to_string(),
+                prev_vout: inp.previous_output.vout,
+                value_sat,
+                script_pubkey_hex,
+                script_type,
+                script_sig_hex: inp.script_sig.to_hex_string(),
+                witness_items_count: inp.witness.len(),
+                witness_hex: inp.witness.iter().map(hex::encode).collect(),
+                is_coinbase: false,
+            });
+        }
+
+        let is_coinbase = tx.is_coinbase();
+        let fee_sat = calculate_fee_sat(is_coinbase, &inputs, &outputs);
+        let feerate_sat_vb = calculate_feerate_sat_vb(fee_sat, vsize);
 
         Ok(TxView {
             txid: txid.to_string(),
@@ -277,6 +301,9 @@ impl CoreRpc {
             inputs,
             weight,
             vsize,
+            is_coinbase,
+            fee_sat,
+            feerate_sat_vb,
             confirmations,
             blockhash,
             block_height,
