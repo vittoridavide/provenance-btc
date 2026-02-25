@@ -4,7 +4,7 @@ use crate::Result;
 
 /// Current schema version. Bump this and add a migration branch
 /// in `run_migrations` whenever the schema changes.
-const LATEST_VERSION: u32 = 1;
+const LATEST_VERSION: u32 = 2;
 
 /// Single entry-point for all SQLite access.
 ///
@@ -50,13 +50,36 @@ fn set_version(conn: &Connection, version: u32) -> Result<()> {
     Ok(())
 }
 
+/// v1 → v2: create `classifications` table.
+fn migrate_to_v2(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS classifications (
+            ref_type     TEXT    NOT NULL CHECK(ref_type IN ('tx','output')),
+            ref_id       TEXT    NOT NULL,
+            category     TEXT    NOT NULL,
+            context      TEXT,
+            metadata     TEXT    NOT NULL DEFAULT '{}',
+            tax_relevant INTEGER NOT NULL DEFAULT 0 CHECK(tax_relevant IN (0,1)),
+            created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY (ref_type, ref_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_classifications_ref_type
+            ON classifications(ref_type);",
+    )?;
+    Ok(())
+}
+
 fn run_migrations(conn: &Connection) -> Result<()> {
     let current = current_version(conn)?;
 
     if current < 1 {
         migrate_to_v1(conn)?;
     }
-
+    if current < 2 {
+        migrate_to_v2(conn)?;
+    }
     // Future: if current < 2 { migrate_to_v2(conn)?; }
 
     if current < LATEST_VERSION {

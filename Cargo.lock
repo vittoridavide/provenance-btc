@@ -2832,6 +2832,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "provenance-core",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
