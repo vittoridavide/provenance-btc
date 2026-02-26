@@ -22,6 +22,21 @@
   --theme-border-default: var(--color-gray-300);
   --theme-border-strong: var(--color-gray-400);
 
+  /* Primitive surface + border tokens (RGB triplets) */
+  --theme-primitive-panel-surface: var(--theme-surface-panel);
+  --theme-primitive-card-surface: var(--theme-surface-panel-muted);
+  --theme-primitive-section-header-surface: var(--theme-surface-panel-muted);
+  --theme-primitive-muted-text: var(--theme-text-muted);
+  --theme-primitive-border-subtle: var(--theme-border-subtle);
+  --theme-primitive-border-default: var(--theme-border-default);
+  --theme-primitive-border-strong: var(--theme-border-strong);
+  --theme-primitive-border-error: var(--theme-status-error);
+
+  /* Primitive control tokens (RGB triplets) */
+  --theme-control-surface: var(--theme-surface-panel-muted);
+  --theme-control-surface-hover: var(--theme-surface-panel-strong);
+  --theme-control-border: var(--theme-border-default);
+
   /* Accent / interaction (RGB triplets) */
   --theme-accent: var(--color-blue-600);
   --theme-accent-hover: var(--color-blue-700);
@@ -37,9 +52,57 @@
   --theme-status-info: var(--color-blue-400);
   --theme-status-info-soft: var(--color-blue-300);
 
-  /* Graph / node specifics (RGB triplets) */
-  --theme-node-handle: var(--color-gray-700);
-  --theme-node-handle-border: var(--color-gray-500);
+  /* Semantic state system (RGB triplets) */
+  --state-loading-fg: var(--theme-text-secondary);
+  --state-loading-bg: var(--theme-surface-panel-strong);
+  --state-loading-border: var(--theme-border-default);
+
+  --state-empty-fg: var(--theme-text-muted);
+  --state-empty-bg: var(--theme-surface-panel-muted);
+  --state-empty-border: var(--theme-border-subtle);
+
+  --state-error-fg: var(--theme-status-error);
+  --state-error-bg: var(--theme-status-error-surface);
+  --state-error-border: var(--theme-status-error);
+
+  --state-info-fg: var(--theme-status-info);
+  --state-info-bg: var(--theme-status-info-soft);
+  --state-info-border: var(--theme-status-info);
+
+  --state-success-fg: var(--theme-status-success);
+  --state-success-bg: var(--theme-status-success);
+  --state-success-border: var(--theme-status-success);
+
+  --state-warning-fg: var(--theme-status-warning);
+  --state-warning-bg: var(--theme-status-warning-soft);
+  --state-warning-border: var(--theme-status-warning);
+
+  /* Graph tokens (RGB triplets) */
+  --theme-graph-node-bg: var(--theme-surface-panel);
+  --theme-graph-node-border: var(--theme-border-default);
+  --theme-graph-node-border-hover: var(--theme-border-strong);
+  --theme-graph-node-text: var(--theme-text-primary);
+  --theme-graph-node-text-muted: var(--theme-text-secondary);
+  --theme-graph-node-root-border: var(--theme-status-warning);
+  --theme-graph-node-selected-ring: var(--theme-accent);
+
+  --theme-graph-status-confirmed: var(--theme-status-success);
+  --theme-graph-status-mempool: var(--theme-status-warning);
+  --theme-graph-status-missing: var(--theme-status-error);
+
+  --theme-graph-handle: var(--color-gray-700);
+  --theme-graph-handle-border: var(--color-gray-500);
+
+  --theme-graph-edge-stroke: var(--color-gray-500);
+  --theme-graph-edge-stroke-active: var(--theme-accent);
+  --theme-graph-edge-label: var(--theme-text-secondary);
+  --theme-graph-edge-label-bg: var(--theme-surface-overlay);
+
+  --theme-graph-control-surface: var(--theme-surface-overlay);
+  --theme-graph-control-surface-hover: var(--theme-surface-panel-muted);
+  --theme-graph-control-border: var(--theme-border-default);
+  --theme-graph-control-icon: var(--theme-text-secondary);
+  --theme-graph-control-icon-hover: var(--theme-text-primary);
 
   /* Semantic shadows */
   --theme-shadow-color: var(--color-black);
@@ -71,6 +134,19 @@
   --theme-border-default: var(--color-gray-600);
   --theme-border-strong: var(--color-gray-500);
 
+  --theme-primitive-panel-surface: var(--theme-surface-panel);
+  --theme-primitive-card-surface: var(--theme-surface-panel-muted);
+  --theme-primitive-section-header-surface: var(--theme-surface-panel-muted);
+  --theme-primitive-muted-text: var(--theme-text-muted);
+  --theme-primitive-border-subtle: var(--theme-border-subtle);
+  --theme-primitive-border-default: var(--theme-border-default);
+  --theme-primitive-border-strong: var(--theme-border-strong);
+  --theme-primitive-border-error: var(--theme-status-error);
+
+  --theme-control-surface: var(--theme-surface-panel-muted);
+  --theme-control-surface-hover: var(--theme-surface-panel-strong);
+  --theme-control-border: var(--theme-border-default);
+
   --theme-accent: var(--color-blue-600);
   --theme-accent-hover: var(--color-blue-500);
 
@@ -84,8 +160,55 @@
   --theme-status-info: var(--color-blue-400);
   --theme-status-info-soft: var(--color-blue-300);
 
-  --theme-node-handle: var(--color-gray-800);
-  --theme-node-handle-border: var(--color-gray-300);
+  --state-loading-fg: var(--theme-text-secondary);
+  --state-loading-bg: var(--theme-surface-panel-strong);
+  --state-loading-border: var(--theme-border-default);
+
+  --state-empty-fg: var(--theme-text-muted);
+  --state-empty-bg: var(--theme-surface-panel-muted);
+  --state-empty-border: var(--theme-border-subtle);
+
+  --state-error-fg: var(--theme-status-error);
+  --state-error-bg: var(--theme-status-error-strong-surface);
+  --state-error-border: var(--theme-status-error);
+
+  --state-info-fg: var(--theme-status-info);
+  --state-info-bg: var(--theme-status-info-soft);
+  --state-info-border: var(--theme-status-info);
+
+  --state-success-fg: var(--theme-status-success);
+  --state-success-bg: var(--theme-status-success);
+  --state-success-border: var(--theme-status-success);
+
+  --state-warning-fg: var(--theme-status-warning);
+  --state-warning-bg: var(--theme-status-warning-soft);
+  --state-warning-border: var(--theme-status-warning);
+
+  --theme-graph-node-bg: var(--theme-surface-panel);
+  --theme-graph-node-border: var(--theme-border-default);
+  --theme-graph-node-border-hover: var(--theme-border-strong);
+  --theme-graph-node-text: var(--theme-text-primary);
+  --theme-graph-node-text-muted: var(--theme-text-secondary);
+  --theme-graph-node-root-border: var(--theme-status-warning);
+  --theme-graph-node-selected-ring: var(--theme-accent);
+
+  --theme-graph-status-confirmed: var(--theme-status-success);
+  --theme-graph-status-mempool: var(--theme-status-warning);
+  --theme-graph-status-missing: var(--theme-status-error);
+
+  --theme-graph-handle: var(--color-gray-800);
+  --theme-graph-handle-border: var(--color-gray-300);
+
+  --theme-graph-edge-stroke: var(--color-gray-500);
+  --theme-graph-edge-stroke-active: var(--theme-accent);
+  --theme-graph-edge-label: var(--theme-text-secondary);
+  --theme-graph-edge-label-bg: var(--theme-surface-overlay);
+
+  --theme-graph-control-surface: var(--theme-surface-overlay);
+  --theme-graph-control-surface-hover: var(--theme-surface-panel-muted);
+  --theme-graph-control-border: var(--theme-border-default);
+  --theme-graph-control-icon: var(--theme-text-secondary);
+  --theme-graph-control-icon-hover: var(--theme-text-primary);
 
   --theme-shadow-color: var(--color-black);
   --theme-shadow-sm: 0 2px 8px rgba(var(--theme-shadow-color), 0.25);

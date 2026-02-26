@@ -1,0 +1,179 @@
+/* ===================================================================
+ * primitives.css — reusable visual primitives
+ *
+ * Owns shared surfaces, text utilities, border variants, and controls.
+ * =================================================================== */
+
+.surface-panel {
+  border: 1px solid rgba(var(--theme-primitive-border-default), 0.9);
+  border-radius: var(--radius-lg);
+  background: rgb(var(--theme-primitive-panel-surface));
+  color: rgb(var(--theme-text-primary));
+}
+
+.surface-card {
+  border: 1px solid rgba(var(--theme-primitive-border-subtle), 0.95);
+  border-radius: var(--radius-md);
+  background: rgba(var(--theme-primitive-card-surface), 0.88);
+  color: rgb(var(--theme-text-primary));
+}
+
+.section-header {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.01em;
+  color: rgb(var(--theme-text-primary));
+}
+
+.section-header--lg {
+  font-size: var(--font-size-base);
+}
+
+.section-header--with-divider {
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid rgba(var(--theme-primitive-border-subtle), 0.85);
+}
+
+.text-muted {
+  color: rgb(var(--theme-primitive-muted-text));
+}
+
+.state-tone {
+  --state-tone-fg: var(--state-info-fg);
+  --state-tone-bg: var(--state-info-bg);
+  --state-tone-border: var(--state-info-border);
+}
+
+.state-tone--loading {
+  --state-tone-fg: var(--state-loading-fg);
+  --state-tone-bg: var(--state-loading-bg);
+  --state-tone-border: var(--state-loading-border);
+}
+
+.state-tone--empty {
+  --state-tone-fg: var(--state-empty-fg);
+  --state-tone-bg: var(--state-empty-bg);
+  --state-tone-border: var(--state-empty-border);
+}
+
+.state-tone--error {
+  --state-tone-fg: var(--state-error-fg);
+  --state-tone-bg: var(--state-error-bg);
+  --state-tone-border: var(--state-error-border);
+}
+
+.state-tone--info {
+  --state-tone-fg: var(--state-info-fg);
+  --state-tone-bg: var(--state-info-bg);
+  --state-tone-border: var(--state-info-border);
+}
+
+.state-tone--success {
+  --state-tone-fg: var(--state-success-fg);
+  --state-tone-bg: var(--state-success-bg);
+  --state-tone-border: var(--state-success-border);
+}
+
+.state-tone--warning {
+  --state-tone-fg: var(--state-warning-fg);
+  --state-tone-bg: var(--state-warning-bg);
+  --state-tone-border: var(--state-warning-border);
+}
+
+.state-text {
+  color: rgb(var(--state-tone-fg));
+}
+
+.state-surface {
+  border: 1px solid rgba(var(--state-tone-border), 0.55);
+  background: rgba(var(--state-tone-bg), 0.14);
+  color: rgb(var(--state-tone-fg));
+}
+
+.state-border {
+  border-color: rgba(var(--state-tone-border), 0.9);
+}
+
+.state-fill {
+  background: rgba(var(--state-tone-bg), 0.45);
+}
+
+.state-badge {
+  color: rgb(var(--state-tone-fg));
+  border-color: rgba(var(--state-tone-border), 0.45);
+  background: rgba(var(--state-tone-bg), 0.12);
+}
+
+.border-variant-subtle {
+  border: 1px solid rgba(var(--theme-primitive-border-subtle), 0.95);
+}
+
+.border-variant-default {
+  border: 1px solid rgba(var(--theme-primitive-border-default), 0.9);
+}
+
+.border-variant-strong {
+  border: 1px solid rgba(var(--theme-primitive-border-strong), 0.95);
+}
+
+.border-variant-error {
+  border: 1px solid rgba(var(--theme-primitive-border-error), 0.55);
+}
+
+.control-button,
+.control-input,
+.control-select {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(var(--theme-control-border), 0.9);
+  background: rgb(var(--theme-control-surface));
+  color: rgb(var(--theme-text-primary));
+  font-family: inherit;
+  font-size: var(--font-size-md);
+  line-height: 1.2;
+  box-sizing: border-box;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.control-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-10);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.control-input,
+.control-select {
+  width: 100%;
+  padding: var(--space-4) var(--space-8);
+}
+
+.control-select {
+  cursor: pointer;
+}
+
+.control-button:hover:not(:disabled),
+.control-input:hover,
+.control-select:hover {
+  border-color: rgba(var(--theme-primitive-border-strong), 0.95);
+  background: rgba(var(--theme-control-surface-hover), 0.9);
+}
+
+.control-button:focus-visible,
+.control-input:focus,
+.control-select:focus {
+  outline: none;
+  border-color: rgba(var(--theme-accent), 0.75);
+  box-shadow: var(--theme-shadow-focus);
+}
+
+.control-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

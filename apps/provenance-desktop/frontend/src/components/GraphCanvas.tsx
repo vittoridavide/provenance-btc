@@ -216,7 +216,7 @@ function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphC
   const showRefreshingBanner = loading && hasGraphData
 
   return (
-    <main className="graph-canvas panel">
+    <main className="graph-canvas surface-panel">
       <div className="graph-canvas-inner">
         <ReactFlowProvider>
           <GraphViewport
@@ -228,7 +228,7 @@ function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphC
         </ReactFlowProvider>
         {showRootPrompt && (
           <div className="graph-canvas__overlay">
-            <div className="graph-canvas__state-card">
+            <div className="graph-canvas__state-card surface-card state-tone state-tone--info state-surface">
               <strong>No graph root selected</strong>
               <span>Enter a txid in the top bar to load a provenance graph.</span>
             </div>
@@ -236,7 +236,7 @@ function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphC
         )}
         {showLoadingOverlay && (
           <div className="graph-canvas__overlay">
-            <div className="graph-canvas__state-card">
+            <div className="graph-canvas__state-card surface-card state-tone state-tone--loading state-surface">
               <div className="graph-canvas__state-row">
                 <span className="spinner" aria-hidden="true" />
                 <strong>Loading graph…</strong>
@@ -247,7 +247,7 @@ function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphC
         )}
         {showEmptyGraph && (
           <div className="graph-canvas__overlay">
-            <div className="graph-canvas__state-card">
+            <div className="graph-canvas__state-card surface-card state-tone state-tone--empty state-surface">
               <strong>Graph is empty</strong>
               <span>No nodes were returned for this root/depth selection.</span>
             </div>
@@ -255,25 +255,33 @@ function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphC
         )}
         {showErrorOverlay && (
           <div className="graph-canvas__overlay">
-            <div className="graph-canvas__state-card graph-canvas__state-card--error">
+            <div className="graph-canvas__state-card surface-card state-tone state-tone--error state-surface">
               <strong>Unable to build graph</strong>
               <span>{error}</span>
-              <button type="button" className="graph-canvas__retry" onClick={() => void reload()}>
+              <button
+                type="button"
+                className="graph-canvas__retry control-button"
+                onClick={() => void reload()}
+              >
                 Retry
               </button>
             </div>
           </div>
         )}
         {showErrorBanner && (
-          <div className="graph-canvas__banner graph-canvas__banner--error">
+          <div className="graph-canvas__banner surface-card state-tone state-tone--error state-surface">
             <span>Graph refresh failed: {error}</span>
-            <button type="button" className="graph-canvas__banner-action" onClick={() => void reload()}>
+            <button
+              type="button"
+              className="graph-canvas__banner-action control-button"
+              onClick={() => void reload()}
+            >
               Retry
             </button>
           </div>
         )}
         {showRefreshingBanner && (
-          <div className="graph-canvas__banner graph-canvas__banner--loading">
+          <div className="graph-canvas__banner surface-card graph-canvas__banner--loading state-tone state-tone--loading state-surface">
             <span className="spinner spinner--sm" aria-hidden="true" />
             <span>Refreshing graph…</span>
           </div>

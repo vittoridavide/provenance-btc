@@ -11,9 +11,23 @@ type TopBarProps = {
   title?: string
   rootTxid: string
   onSubmitRootTxid: (txid: string) => void
+  showPanelToggles: boolean
+  sidebarCollapsed: boolean
+  detailCollapsed: boolean
+  onToggleSidebar: () => void
+  onToggleDetail: () => void
 }
 
-function TopBar({ title = 'Graph Workspace', rootTxid, onSubmitRootTxid }: TopBarProps) {
+function TopBar({
+  title = 'Graph Workspace',
+  rootTxid,
+  onSubmitRootTxid,
+  showPanelToggles,
+  sidebarCollapsed,
+  detailCollapsed,
+  onToggleSidebar,
+  onToggleDetail,
+}: TopBarProps) {
   const { canControl, graphError, isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
     getGraphControlsSnapshot,
@@ -37,12 +51,12 @@ function TopBar({ title = 'Graph Workspace', rootTxid, onSubmitRootTxid }: TopBa
   }
 
   return (
-    <header className="top-bar panel">
+    <header className="top-bar surface-panel">
       <div className="top-bar__left">
-        <div className="top-bar__title">{title}</div>
+        <div className="top-bar__title section-header section-header--lg">{title}</div>
         <form className="top-bar__search" onSubmit={handleSubmit}>
           <input
-            className="top-bar__search-input"
+            className="top-bar__search-input control-input"
             value={searchInput}
             onChange={(event) => {
               setSearchInput(event.target.value)
@@ -55,27 +69,49 @@ function TopBar({ title = 'Graph Workspace', rootTxid, onSubmitRootTxid }: TopBa
           />
           <button
             type="submit"
-            className="top-bar__button top-bar__button--search"
+            className="top-bar__button top-bar__button--search control-button"
             disabled={isGraphLoading}
           >
             {isGraphLoading ? 'Loading…' : 'Load txid'}
           </button>
         </form>
-        {validationError && <p className="top-bar__error">{validationError}</p>}
+        {validationError && (
+          <p className="top-bar__error state-tone state-tone--error state-text">{validationError}</p>
+        )}
         {!validationError && isGraphLoading && (
-          <p className="top-bar__status">
+          <p className="top-bar__status state-tone state-tone--loading state-text">
             <span className="spinner spinner--sm" aria-hidden="true" />
             <span>Loading graph…</span>
           </p>
         )}
         {!validationError && !isGraphLoading && graphError && (
-          <p className="top-bar__status top-bar__status--error">{graphError}</p>
+          <p className="top-bar__status state-tone state-tone--error state-text">{graphError}</p>
         )}
       </div>
       <div className="top-bar__actions">
+        {showPanelToggles && (
+          <>
+            <button
+              type="button"
+              className="top-bar__button top-bar__panel-toggle control-button"
+              onClick={onToggleSidebar}
+              aria-pressed={!sidebarCollapsed}
+            >
+              {sidebarCollapsed ? 'Show filters' : 'Hide filters'}
+            </button>
+            <button
+              type="button"
+              className="top-bar__button top-bar__panel-toggle control-button"
+              onClick={onToggleDetail}
+              aria-pressed={!detailCollapsed}
+            >
+              {detailCollapsed ? 'Show details' : 'Hide details'}
+            </button>
+          </>
+        )}
         <button
           type="button"
-          className="top-bar__button"
+          className="top-bar__button control-button"
           onClick={() => triggerGraphControl('fit')}
           disabled={!canControl}
         >
@@ -83,7 +119,7 @@ function TopBar({ title = 'Graph Workspace', rootTxid, onSubmitRootTxid }: TopBa
         </button>
         <button
           type="button"
-          className="top-bar__button"
+          className="top-bar__button control-button"
           onClick={() => triggerGraphControl('reset')}
           disabled={!canControl}
         >
@@ -91,7 +127,7 @@ function TopBar({ title = 'Graph Workspace', rootTxid, onSubmitRootTxid }: TopBa
         </button>
         <button
           type="button"
-          className="top-bar__button"
+          className="top-bar__button control-button"
           onClick={() => triggerGraphControl('zoomOut')}
           disabled={!canControl}
         >
@@ -99,7 +135,7 @@ function TopBar({ title = 'Graph Workspace', rootTxid, onSubmitRootTxid }: TopBa
         </button>
         <button
           type="button"
-          className="top-bar__button"
+          className="top-bar__button control-button"
           onClick={() => triggerGraphControl('zoomIn')}
           disabled={!canControl}
         >

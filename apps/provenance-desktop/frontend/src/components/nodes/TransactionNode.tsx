@@ -7,11 +7,10 @@ function formatTxid(txid: string): string {
 }
 
 function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
-  const classes = ['transaction-node']
+  const classes = ['transaction-node', `transaction-node--status-${data.status}`]
 
   if (selected) classes.push('transaction-node--selected')
   if (data.is_root) classes.push('transaction-node--root')
-  if (data.status === 'missing') classes.push('transaction-node--missing')
 
   return (
     <div className={classes.join(' ')} title={data.txid}>
@@ -30,9 +29,11 @@ function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
       {data.node_label && <div className="transaction-node__label">{data.node_label}</div>}
 
       <div className="transaction-node__meta">
-        <span className={`tx-badge tx-badge--${data.status}`}>{data.status}</span>
+        <span className={`tx-badge tx-badge--status tx-badge--status-${data.status}`}>{data.status}</span>
         {data.classification_category && (
-          <span className="tx-badge tx-badge--classification">{data.classification_category}</span>
+          <span className="tx-badge tx-badge--classification">
+            {data.classification_category}
+          </span>
         )}
       </div>
 

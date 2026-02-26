@@ -1,5 +1,7 @@
 @import './styles/tokens.css';
 @import './styles/theme.css';
+@import './styles/primitives.css';
+@import './styles/layout.css';
 
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -25,11 +27,7 @@ a:hover {
 }
 
 body {
-  margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
-  min-height: 100vh;
   color: rgb(var(--theme-text-primary));
   background-color: rgb(var(--theme-surface-page));
 }
@@ -37,27 +35,4 @@ body {
 h1 {
   font-size: var(--font-size-display);
   line-height: 1.1;
-}
-
-button {
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(var(--theme-border-default), 0.8);
-  padding: var(--space-9) var(--space-17);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-medium);
-  font-family: inherit;
-  color: rgb(var(--theme-text-primary));
-  background-color: rgb(var(--theme-surface-panel-muted));
-  cursor: pointer;
-  transition:
-    border-color 0.25s,
-    background-color 0.25s;
-}
-button:hover {
-  border-color: rgb(var(--theme-accent));
-  background-color: rgb(var(--theme-surface-panel));
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
 }

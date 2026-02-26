@@ -2,6 +2,7 @@ import { useTransactionDetail } from '../hooks/useTransactionDetail'
 
 type DetailPanelProps = {
   selectedTxid: string | null
+  collapsed?: boolean
 }
 
 function toReadableStatus(confirmations: number | null): string {
@@ -19,43 +20,55 @@ function shortTxid(txid: string): string {
   return `${txid.slice(0, 8)}...${txid.slice(-8)}`
 }
 
-function DetailPanel({ selectedTxid }: DetailPanelProps) {
+function DetailPanel({ selectedTxid, collapsed = false }: DetailPanelProps) {
   const { detail, loading, error } = useTransactionDetail(selectedTxid)
   const hasSelection = selectedTxid !== null && selectedTxid.trim().length > 0
   const activeTxid = selectedTxid ?? ''
 
+  if (collapsed) {
+    return (
+      <aside className="detail-panel detail-panel--collapsed surface-panel" aria-label="Transaction details">
+        <div className="detail-panel__collapsed-label">Details</div>
+      </aside>
+    )
+  }
+
   return (
-    <aside className="detail-panel panel">
+    <aside className="detail-panel surface-panel">
       <div className="detail-panel__content">
-        <h2 className="detail-panel__title">Transaction Details</h2>
+        <h2 className="detail-panel__title section-header section-header--lg section-header--with-divider">
+          Transaction Details
+        </h2>
 
         {!hasSelection && (
-          <p className="detail-panel__placeholder">
+          <p className="detail-panel__placeholder state-tone state-tone--info state-text">
             Select a transaction node to inspect details.
           </p>
         )}
 
         {hasSelection && loading && (
-          <p className="detail-panel__status">
+          <p className="detail-panel__status state-tone state-tone--loading state-text">
             <span className="spinner spinner--sm" aria-hidden="true" />
             <span>Loading {shortTxid(activeTxid)}…</span>
           </p>
         )}
 
         {hasSelection && !loading && error && (
-          <div className="detail-panel__error">
+          <div className="detail-panel__error surface-card state-tone state-tone--error state-surface">
             <strong>Failed to load transaction</strong>
             <span>{error}</span>
           </div>
         )}
 
         {hasSelection && !loading && !error && !detail && (
-          <p className="detail-panel__placeholder">No detail data returned for this transaction.</p>
+          <p className="detail-panel__placeholder state-tone state-tone--empty state-text">
+            No detail data returned for this transaction.
+          </p>
         )}
 
         {hasSelection && !error && detail && (
           <>
-            <div className="detail-panel__section">
+            <div className="detail-panel__section surface-card border-variant-subtle">
               <div className="detail-panel__kv">
                 <span>Txid</span>
                 <code>{detail.txid}</code>
@@ -82,7 +95,7 @@ function DetailPanel({ selectedTxid }: DetailPanelProps) {
               </div>
             </div>
 
-            <div className="detail-panel__section">
+            <div className="detail-panel__section surface-card border-variant-subtle">
               <div className="detail-panel__kv">
                 <span>Version</span>
                 <span>{detail.version}</span>
@@ -105,9 +118,13 @@ function DetailPanel({ selectedTxid }: DetailPanelProps) {
               </div>
             </div>
 
-            <div className="detail-panel__section">
-              <h3>Input snippet</h3>
-              {detail.inputs.length === 0 && <p className="detail-panel__placeholder">No inputs.</p>}
+            <div className="detail-panel__section surface-card border-variant-subtle">
+              <h3 className="section-header">Input snippet</h3>
+              {detail.inputs.length === 0 && (
+                <p className="detail-panel__placeholder state-tone state-tone--empty state-text">
+                  No inputs.
+                </p>
+              )}
               {detail.inputs.slice(0, 3).map((input) => (
                 <div key={`${input.vin}-${input.prev_txid}-${input.prev_vout}`} className="detail-panel__line">
                   <span>vin {input.vin}</span>
@@ -117,13 +134,19 @@ function DetailPanel({ selectedTxid }: DetailPanelProps) {
                 </div>
               ))}
               {detail.inputs.length > 3 && (
-                <p className="detail-panel__placeholder">+{detail.inputs.length - 3} more inputs</p>
+                <p className="detail-panel__placeholder state-tone state-tone--empty state-text">
+                  +{detail.inputs.length - 3} more inputs
+                </p>
               )}
             </div>
 
-            <div className="detail-panel__section">
-              <h3>Output snippet</h3>
-              {detail.outputs.length === 0 && <p className="detail-panel__placeholder">No outputs.</p>}
+            <div className="detail-panel__section surface-card border-variant-subtle">
+              <h3 className="section-header">Output snippet</h3>
+              {detail.outputs.length === 0 && (
+                <p className="detail-panel__placeholder state-tone state-tone--empty state-text">
+                  No outputs.
+                </p>
+              )}
               {detail.outputs.slice(0, 3).map((output) => (
                 <div key={output.vout} className="detail-panel__line">
                   <span>vout {output.vout}</span>
@@ -131,7 +154,9 @@ function DetailPanel({ selectedTxid }: DetailPanelProps) {
                 </div>
               ))}
               {detail.outputs.length > 3 && (
-                <p className="detail-panel__placeholder">+{detail.outputs.length - 3} more outputs</p>
+                <p className="detail-panel__placeholder state-tone state-tone--empty state-text">
+                  +{detail.outputs.length - 3} more outputs
+                </p>
               )}
             </div>
           </>
