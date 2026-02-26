@@ -10,7 +10,7 @@ export type ClassificationState = 'None' | 'TxOnly' | 'Complete'
 
 export type RefType = 'tx' | 'output'
 
-export interface GraphBuildOptions {}
+export type GraphBuildOptions = Record<string, never>
 
 export interface Classification {
   category: string

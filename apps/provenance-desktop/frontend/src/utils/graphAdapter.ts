@@ -24,6 +24,8 @@ export type AdaptedGraph = {
   edges: Edge[]
 }
 
+export const TRANSACTION_NODE_TYPE = 'transaction'
+
 function compareNodes(a: GraphNode, b: GraphNode): number {
   if (a.is_root !== b.is_root) {
     return a.is_root ? -1 : 1
@@ -58,6 +60,7 @@ export function adaptProvenanceGraphToReactFlow(graph: ProvenanceGraph): Adapted
 
     return {
       id: node.txid,
+      type: TRANSACTION_NODE_TYPE,
       position: {
         x: column * NODE_X_SPACING,
         y: row * NODE_Y_SPACING,

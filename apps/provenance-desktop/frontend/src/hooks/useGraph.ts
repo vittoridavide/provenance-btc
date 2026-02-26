@@ -9,6 +9,7 @@ type UseGraphParams = {
   rootTxid: string
   depth?: number
   options?: GraphBuildOptions
+  reloadKey?: number
 }
 
 type UseGraphResult = {
@@ -33,6 +34,7 @@ export function useGraph({
   rootTxid,
   depth = DEFAULT_DEPTH,
   options,
+  reloadKey = 0,
 }: UseGraphParams): UseGraphResult {
   const [graph, setGraph] = useState<ProvenanceGraph | null>(null)
   const [loading, setLoading] = useState(false)
@@ -50,6 +52,7 @@ export function useGraph({
   }, [resolvedOptions])
 
   const reload = useCallback(async () => {
+    void reloadKey
     if (!trimmedRootTxid) {
       requestIdRef.current += 1
       setLoading(false)
@@ -80,15 +83,13 @@ export function useGraph({
       if (requestId !== requestIdRef.current) {
         return
       }
-
-      setGraph(null)
       setError(toErrorMessage(invokeError))
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false)
       }
     }
-  }, [depth, optionsKey, trimmedRootTxid])
+  }, [depth, optionsKey, reloadKey, trimmedRootTxid])
 
   useEffect(() => {
     void reload()
