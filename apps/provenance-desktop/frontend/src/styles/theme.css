@@ -1,0 +1,94 @@
+:root {
+  color-scheme: light;
+
+  /* Semantic surfaces (RGB triplets) */
+  --theme-surface-page: var(--color-gray-100);
+  --theme-surface-shell: var(--color-gray-50);
+  --theme-surface-panel: var(--color-gray-0);
+  --theme-surface-panel-muted: var(--color-gray-100);
+  --theme-surface-panel-strong: var(--color-gray-200);
+  --theme-surface-overlay: var(--color-gray-0);
+  --theme-surface-overlay-muted: var(--color-gray-100);
+  --theme-surface-debug: var(--color-gray-900);
+
+  /* Semantic text (RGB triplets) */
+  --theme-text-primary: var(--color-gray-900);
+  --theme-text-secondary: var(--color-gray-700);
+  --theme-text-muted: var(--color-gray-600);
+  --theme-text-inverse: var(--color-gray-0);
+
+  /* Semantic borders (RGB triplets) */
+  --theme-border-subtle: var(--color-gray-200);
+  --theme-border-default: var(--color-gray-300);
+  --theme-border-strong: var(--color-gray-400);
+
+  /* Accent / interaction (RGB triplets) */
+  --theme-accent: var(--color-blue-600);
+  --theme-accent-hover: var(--color-blue-700);
+
+  /* Status colors (RGB triplets) */
+  --theme-status-success: var(--color-green-500);
+  --theme-status-warning: var(--color-orange-500);
+  --theme-status-warning-soft: var(--color-orange-400);
+  --theme-status-error: var(--color-red-600);
+  --theme-status-error-soft: var(--color-red-300);
+  --theme-status-error-surface: var(--color-red-200);
+  --theme-status-error-strong-surface: var(--color-red-900);
+  --theme-status-info: var(--color-blue-400);
+  --theme-status-info-soft: var(--color-blue-300);
+
+  /* Graph / node specifics (RGB triplets) */
+  --theme-node-handle: var(--color-gray-700);
+  --theme-node-handle-border: var(--color-gray-500);
+
+  /* Semantic shadows */
+  --theme-shadow-color: var(--color-black);
+  --theme-shadow-sm: 0 2px 8px rgba(var(--theme-shadow-color), 0.15);
+  --theme-shadow-md: 0 6px 14px rgba(var(--theme-shadow-color), 0.2);
+  --theme-shadow-focus: 0 0 0 2px rgba(var(--theme-accent), 0.28);
+}
+
+:root.theme-dark,
+.theme-dark {
+  color-scheme: dark;
+
+  /* Dark theme skeleton (values can be tuned as dark mode work advances) */
+  --theme-surface-page: var(--color-gray-900);
+  --theme-surface-shell: var(--color-gray-850);
+  --theme-surface-panel: var(--color-gray-850);
+  --theme-surface-panel-muted: var(--color-gray-900);
+  --theme-surface-panel-strong: var(--color-gray-975);
+  --theme-surface-overlay: var(--color-gray-950);
+  --theme-surface-overlay-muted: var(--color-gray-975);
+  --theme-surface-debug: var(--color-black);
+
+  --theme-text-primary: var(--color-gray-0);
+  --theme-text-secondary: var(--color-gray-200);
+  --theme-text-muted: var(--color-gray-300);
+  --theme-text-inverse: var(--color-gray-900);
+
+  --theme-border-subtle: var(--color-gray-700);
+  --theme-border-default: var(--color-gray-600);
+  --theme-border-strong: var(--color-gray-500);
+
+  --theme-accent: var(--color-blue-600);
+  --theme-accent-hover: var(--color-blue-500);
+
+  --theme-status-success: var(--color-green-500);
+  --theme-status-warning: var(--color-orange-500);
+  --theme-status-warning-soft: var(--color-orange-400);
+  --theme-status-error: var(--color-red-400);
+  --theme-status-error-soft: var(--color-red-300);
+  --theme-status-error-surface: var(--color-red-900);
+  --theme-status-error-strong-surface: var(--color-red-900);
+  --theme-status-info: var(--color-blue-400);
+  --theme-status-info-soft: var(--color-blue-300);
+
+  --theme-node-handle: var(--color-gray-800);
+  --theme-node-handle-border: var(--color-gray-300);
+
+  --theme-shadow-color: var(--color-black);
+  --theme-shadow-sm: 0 2px 8px rgba(var(--theme-shadow-color), 0.25);
+  --theme-shadow-md: 0 6px 14px rgba(var(--theme-shadow-color), 0.35);
+  --theme-shadow-focus: 0 0 0 2px rgba(var(--theme-accent), 0.35);
+}
