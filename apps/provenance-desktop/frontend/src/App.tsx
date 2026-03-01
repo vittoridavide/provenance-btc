@@ -5,6 +5,8 @@ import DetailPanel from './components/DetailPanel'
 import GraphCanvas from './components/GraphCanvas'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
+import {invoke} from "@tauri-apps/api/core";
+import type {ProvenanceSetup} from "./types/api.ts";
 const DEFAULT_ROOT_TXID = import.meta.env.VITE_PROVENANCE_GRAPH_ROOT_TXID ?? ''
 const COMPACT_LAYOUT_MAX_WIDTH = 1400
 const SIDEBAR_COLLAPSE_MAX_WIDTH = 1200
@@ -89,6 +91,17 @@ function App() {
       window.removeEventListener('resize', handleResize)
     }
   }, [])
+
+    useEffect(() => {
+        void invoke<ProvenanceSetup>('cmd_set_rpc_config', {
+          args: {
+            url: import.meta.env.VITE_PROVENANCE_RPC_URL,
+            username: import.meta.env.VITE_PROVENANCE_RPC_USER,
+            password: import.meta.env.VITE_PROVENANCE_RPC_PASS
+          }
+        })
+    }, []);
+
   const handleRootTxidSubmit = useCallback((nextRootTxid: string) => {
     setRootTxid(nextRootTxid)
     setSelectedTxid(null)
@@ -135,7 +148,7 @@ function App() {
       <AlertBanner visible={false} message="Alert Banner" />
       <div className="workspace-scroll">
         <div className={workspaceClassName}>
-          <Sidebar collapsed={sidebarCollapsed} />
+          <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} />
           <GraphCanvas
             rootTxid={rootTxid}
             reloadKey={graphReloadKey}

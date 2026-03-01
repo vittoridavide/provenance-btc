@@ -1,8 +1,20 @@
 export type GraphControlAction = 'fit' | 'reset' | 'zoomIn' | 'zoomOut'
+export type TransactionVisibilityFilter = 'all' | 'confirmed' | 'mempool' | 'missing'
+export type GraphLayoutMode = 'lr' | 'tb' | 'radial'
 
 type GraphControlHandlers = Record<GraphControlAction, () => void>
 
-export type GraphControlsSnapshot = {
+export type GraphUiControlState = {
+  auditMode: boolean
+  colorByCategory: boolean
+  showTransactions: TransactionVisibilityFilter
+  depth: number
+  showOnlyPathsToSelected: boolean
+  hideUnrelatedBranches: boolean
+  layoutMode: GraphLayoutMode
+}
+
+export type GraphControlsSnapshot = GraphUiControlState & {
   canControl: boolean
   nodeCount: number
   isGraphLoading: boolean
@@ -10,8 +22,18 @@ export type GraphControlsSnapshot = {
 }
 
 const listeners = new Set<() => void>()
+const DEFAULT_GRAPH_UI_CONTROL_STATE: GraphUiControlState = {
+  auditMode: false,
+  colorByCategory: false,
+  showTransactions: 'all',
+  depth: 10,
+  showOnlyPathsToSelected: false,
+  hideUnrelatedBranches: false,
+  layoutMode: 'lr',
+}
 
 let snapshot: GraphControlsSnapshot = {
+  ...DEFAULT_GRAPH_UI_CONTROL_STATE,
   canControl: false,
   nodeCount: 0,
   isGraphLoading: false,
@@ -36,15 +58,24 @@ export function subscribeGraphControls(listener: () => void): () => void {
 export function getGraphControlsSnapshot(): GraphControlsSnapshot {
   return snapshot
 }
+function areSnapshotsEqual(a: GraphControlsSnapshot, b: GraphControlsSnapshot): boolean {
+  return (
+    a.auditMode === b.auditMode &&
+    a.colorByCategory === b.colorByCategory &&
+    a.showTransactions === b.showTransactions &&
+    a.depth === b.depth &&
+    a.showOnlyPathsToSelected === b.showOnlyPathsToSelected &&
+    a.hideUnrelatedBranches === b.hideUnrelatedBranches &&
+    a.layoutMode === b.layoutMode &&
+    a.canControl === b.canControl &&
+    a.nodeCount === b.nodeCount &&
+    a.isGraphLoading === b.isGraphLoading &&
+    a.graphError === b.graphError
+  )
+}
 
 export function setGraphControlsSnapshot(nextSnapshot: GraphControlsSnapshot): void {
-  const unchanged =
-    nextSnapshot.canControl === snapshot.canControl &&
-    nextSnapshot.nodeCount === snapshot.nodeCount &&
-    nextSnapshot.isGraphLoading === snapshot.isGraphLoading &&
-    nextSnapshot.graphError === snapshot.graphError
-
-  if (unchanged) {
+  if (areSnapshotsEqual(nextSnapshot, snapshot)) {
     return
   }
 
@@ -57,6 +88,10 @@ export function patchGraphControlsSnapshot(patch: Partial<GraphControlsSnapshot>
     ...snapshot,
     ...patch,
   })
+}
+
+export function patchGraphUiControlState(patch: Partial<GraphUiControlState>): void {
+  patchGraphControlsSnapshot(patch)
 }
 
 export function registerGraphControlHandlers(nextHandlers: Partial<GraphControlHandlers>): void {

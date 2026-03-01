@@ -20,6 +20,86 @@
   flex-direction: column;
   gap: var(--space-11);
 }
+.sidebar__section {
+  padding: var(--space-9) var(--space-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.sidebar__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sidebar__field-label {
+  font-size: var(--font-size-sm-3);
+  font-weight: var(--font-weight-semibold);
+  color: rgb(var(--theme-text-secondary));
+}
+
+.sidebar__checkbox-row,
+.sidebar__radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  font-size: var(--font-size-sm-4);
+  color: rgb(var(--theme-text-secondary));
+}
+
+.sidebar__checkbox,
+.sidebar__radio {
+  margin-top: 0.15rem;
+  accent-color: rgb(var(--theme-accent));
+}
+
+.sidebar__checkbox-row--disabled {
+  opacity: 0.65;
+}
+
+.sidebar__helper-text {
+  margin: 0;
+  font-size: var(--font-size-sm-2);
+  color: rgb(var(--theme-text-muted));
+}
+
+.sidebar__depth-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px;
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.sidebar__depth-range {
+  width: 100%;
+  accent-color: rgb(var(--theme-accent));
+}
+
+.sidebar__depth-input {
+  text-align: right;
+}
+
+.sidebar__radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sidebar__legend {
+  margin: 0;
+  padding-inline-start: var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: rgb(var(--theme-text-secondary));
+  font-size: var(--font-size-sm-4);
+}
+
+.sidebar__legend-label {
+  display: inline-flex;
+  align-items: center;
+}
 
 .sidebar__placeholder-card {
   padding: var(--space-10);
@@ -345,16 +425,24 @@
 }
 
 .transaction-node {
-  --tx-node-status-color: var(--theme-graph-status-mempool);
+  --tx-node-accent-color: var(--theme-graph-node-border);
   --tx-node-root-ring: 0 0 0 0 rgba(var(--theme-graph-node-root-border), 0);
+  --tx-node-audit-ring: 0 0 0 0 rgba(var(--theme-graph-node-audit-ring), 0);
+  --tx-node-selected-ring: 0 0 0 0 rgba(var(--theme-graph-node-selected-ring), 0);
+  --tx-node-category-indicator-ring: 0 0 0 0 rgba(var(--theme-graph-node-border), 0);
   min-width: 180px;
   max-width: 220px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--theme-graph-node-border), 0.95);
-  border-inline-start: 3px solid rgba(var(--tx-node-status-color), 0.88);
+  border-inline-start: 3px solid rgba(var(--tx-node-accent-color), 0.88);
   background: rgb(var(--theme-graph-node-bg));
   color: rgb(var(--theme-graph-node-text));
-  box-shadow: var(--tx-node-root-ring), var(--theme-shadow-sm);
+  box-shadow:
+    var(--tx-node-root-ring),
+    var(--tx-node-audit-ring),
+    var(--tx-node-selected-ring),
+    var(--tx-node-category-indicator-ring),
+    var(--theme-shadow-sm);
   padding: var(--space-8) var(--space-10);
   transition:
     border-color 120ms ease,
@@ -364,31 +452,52 @@
 
 .transaction-node:hover {
   border-color: rgba(var(--theme-graph-node-border-hover), 0.95);
-  box-shadow: var(--tx-node-root-ring), var(--theme-shadow-md);
+  box-shadow: var(--tx-node-root-ring), var(--tx-node-audit-ring), var(--tx-node-selected-ring), var(--theme-shadow-md);
   transform: translateY(-1px);
 }
 
 .transaction-node--selected {
-  box-shadow:
-    var(--tx-node-root-ring),
-    0 0 0 2px rgba(var(--theme-graph-node-selected-ring), 0.35),
-    var(--theme-shadow-md);
+  --tx-node-selected-ring: 0 0 0 2px rgba(var(--theme-graph-node-selected-ring), 0.35);
+}
+
+.transaction-node--audit-unclassified {
+  --tx-node-audit-ring: 0 0 0 2px rgba(var(--theme-graph-node-audit-ring), 0.45);
+  border-color: rgba(var(--theme-graph-node-audit-border), 0.95);
+  background:
+    linear-gradient(
+      0deg,
+      rgba(var(--theme-graph-node-audit-surface), 0.14),
+      rgba(var(--theme-graph-node-audit-surface), 0.14)
+    ),
+    rgb(var(--theme-graph-node-bg));
 }
 
 .transaction-node--root {
   --tx-node-root-ring: inset 0 0 0 1px rgba(var(--theme-graph-node-root-border), 0.88);
 }
 
-.transaction-node--status-confirmed {
-  --tx-node-status-color: var(--theme-graph-status-confirmed);
+.transaction-node--category-revenue {
+  --tx-node-accent-color: var(--theme-graph-category-revenue);
 }
 
-.transaction-node--status-mempool {
-  --tx-node-status-color: var(--theme-graph-status-mempool);
+.transaction-node--category-expense {
+  --tx-node-accent-color: var(--theme-graph-category-expense);
 }
 
-.transaction-node--status-missing {
-  --tx-node-status-color: var(--theme-graph-status-missing);
+.transaction-node--category-internal-transfer {
+  --tx-node-accent-color: var(--theme-graph-category-internal-transfer);
+}
+
+.transaction-node--category-exchange-deposit {
+  --tx-node-accent-color: var(--theme-graph-category-exchange-deposit);
+}
+
+.transaction-node--category-unknown {
+  --tx-node-accent-color: var(--theme-graph-category-unknown);
+}
+
+.transaction-node--category-neutral-indicator {
+  --tx-node-category-indicator-ring: inset 0 0 0 1px rgba(var(--theme-graph-node-border), 0.62);
 }
 
 

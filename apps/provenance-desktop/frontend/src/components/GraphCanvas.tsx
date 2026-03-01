@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import ReactFlow, {
   ReactFlowProvider,
@@ -12,21 +12,27 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { useGraph } from '../hooks/useGraph'
 import {
+  getGraphControlsSnapshot,
   clearGraphControlHandlers,
   patchGraphControlsSnapshot,
   registerGraphControlHandlers,
+  subscribeGraphControls,
+  type GraphLayoutMode,
+  type TransactionVisibilityFilter,
 } from '../state/graphControls'
 import {
   type GraphFlowNodeData,
   TRANSACTION_NODE_TYPE,
   adaptProvenanceGraphToReactFlow,
 } from '../utils/graphAdapter'
-import { layoutGraphLeftToRight } from '../utils/layout'
+import { resolveCategoryNodeStyle } from '../utils/categoryPalette'
+import { layoutGraphByMode } from '../utils/layout'
 import TransactionNode from './nodes/TransactionNode'
 
 const nodeTypes = {
   [TRANSACTION_NODE_TYPE]: TransactionNode,
 } satisfies NodeTypes
+const DEPTH_RELOAD_DEBOUNCE_MS = 250
 
 type GraphCanvasProps = {
   rootTxid: string
@@ -62,29 +68,207 @@ function applySelectedTxid<TNodeData>(
   return hasChanges ? nextNodes : nodes
 }
 
+function getAuditModeSnapshot(): boolean {
+  return getGraphControlsSnapshot().auditMode
+}
+function getColorByCategorySnapshot(): boolean {
+  return getGraphControlsSnapshot().colorByCategory
+}
+function getTransactionVisibilitySnapshot(): TransactionVisibilityFilter {
+  return getGraphControlsSnapshot().showTransactions
+}
+function getShowOnlyPathsToSelectedSnapshot(): boolean {
+  return getGraphControlsSnapshot().showOnlyPathsToSelected
+}
+function getHideUnrelatedBranchesSnapshot(): boolean {
+  return getGraphControlsSnapshot().hideUnrelatedBranches
+}
+function getDepthSnapshot(): number {
+  return getGraphControlsSnapshot().depth
+}
+function getLayoutModeSnapshot(): GraphLayoutMode {
+  return getGraphControlsSnapshot().layoutMode
+}
+
+function filterGraphByTransactionStatus(
+  nodes: Node<GraphFlowNodeData>[],
+  edges: Edge[],
+  showTransactions: TransactionVisibilityFilter,
+): { nodes: Node<GraphFlowNodeData>[]; edges: Edge[] } {
+  if (showTransactions === 'all') {
+    return { nodes, edges }
+  }
+
+  const filteredNodes = nodes.filter((node) => node.data.status === showTransactions)
+  const visibleNodeIds = new Set(filteredNodes.map((node) => node.id))
+  const filteredEdges = edges.filter(
+    (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target),
+  )
+
+  return { nodes: filteredNodes, edges: filteredEdges }
+}
+
+function collectReachableNodeIds(
+  startNodeId: string,
+  adjacency: Map<string, string[]>,
+): Set<string> {
+  const reachableNodeIds = new Set<string>([startNodeId])
+  const queue = [startNodeId]
+  let cursor = 0
+
+  while (cursor < queue.length) {
+    const currentNodeId = queue[cursor]
+    cursor += 1
+    const neighbors = adjacency.get(currentNodeId)
+    if (!neighbors) continue
+
+    for (const neighborNodeId of neighbors) {
+      if (reachableNodeIds.has(neighborNodeId)) continue
+      reachableNodeIds.add(neighborNodeId)
+      queue.push(neighborNodeId)
+    }
+  }
+
+  return reachableNodeIds
+}
+
+function filterGraphBySelectionPathFocus(
+  nodes: Node<GraphFlowNodeData>[],
+  edges: Edge[],
+  selectedTxid: string | null,
+  showOnlyPathsToSelected: boolean,
+  hideUnrelatedBranches: boolean,
+): { nodes: Node<GraphFlowNodeData>[]; edges: Edge[] } {
+  const shouldFilterBySelectionPath = showOnlyPathsToSelected || hideUnrelatedBranches
+
+  if (!shouldFilterBySelectionPath || !selectedTxid) {
+    return { nodes, edges }
+  }
+
+  const visibleNodeIds = new Set(nodes.map((node) => node.id))
+  if (!visibleNodeIds.has(selectedTxid)) {
+    return { nodes, edges }
+  }
+
+  const forwardAdjacency = new Map<string, string[]>()
+  const reverseAdjacency = new Map<string, string[]>()
+
+  for (const edge of edges) {
+    if (!visibleNodeIds.has(edge.source) || !visibleNodeIds.has(edge.target)) {
+      continue
+    }
+
+    const sourceNeighbors = forwardAdjacency.get(edge.source) ?? []
+    sourceNeighbors.push(edge.target)
+    forwardAdjacency.set(edge.source, sourceNeighbors)
+
+    const targetNeighbors = reverseAdjacency.get(edge.target) ?? []
+    targetNeighbors.push(edge.source)
+    reverseAdjacency.set(edge.target, targetNeighbors)
+  }
+
+  const ancestorNodeIds = collectReachableNodeIds(selectedTxid, forwardAdjacency)
+  const descendantNodeIds = collectReachableNodeIds(selectedTxid, reverseAdjacency)
+  const focusedNodeIds = new Set([...ancestorNodeIds, ...descendantNodeIds])
+
+  const focusedNodes = nodes.filter((node) => focusedNodeIds.has(node.id))
+  const focusedEdges = edges.filter(
+    (edge) => focusedNodeIds.has(edge.source) && focusedNodeIds.has(edge.target),
+  )
+
+  return { nodes: focusedNodes, edges: focusedEdges }
+}
+
+function applyNodeVisualModes(
+  nodes: Node<GraphFlowNodeData>[],
+  auditMode: boolean,
+  colorByCategory: boolean,
+): Node<GraphFlowNodeData>[] {
+  let hasChanges = false
+
+  const nextNodes = nodes.map((node) => {
+    const shouldHighlightUnclassified = auditMode && node.data.classification_state === 'None'
+    const { paletteKey, showNeutralIndicator } = resolveCategoryNodeStyle(
+      node.data.classification_category,
+      colorByCategory,
+    )
+
+    if (
+      node.data.audit_unclassified === shouldHighlightUnclassified &&
+      node.data.category_palette_key === paletteKey &&
+      node.data.category_neutral_indicator === showNeutralIndicator
+    ) {
+      return node
+    }
+
+    hasChanges = true
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        audit_unclassified: shouldHighlightUnclassified,
+        category_palette_key: paletteKey,
+        category_neutral_indicator: showNeutralIndicator,
+      },
+    }
+  })
+
+  return hasChanges ? nextNodes : nodes
+}
+
 function GraphViewport({
   adaptedNodes,
   adaptedEdges,
   selectedTxid,
   onSelectTxid,
 }: GraphViewportProps) {
+  const auditMode = useSyncExternalStore(
+    subscribeGraphControls,
+    getAuditModeSnapshot,
+    getAuditModeSnapshot,
+  )
+  const colorByCategory = useSyncExternalStore(
+    subscribeGraphControls,
+    getColorByCategorySnapshot,
+    getColorByCategorySnapshot,
+  )
+  const layoutMode = useSyncExternalStore(
+    subscribeGraphControls,
+    getLayoutModeSnapshot,
+    getLayoutModeSnapshot,
+  )
   const reactFlow = useReactFlow<GraphFlowNodeData>()
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphFlowNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const layoutRunCountRef = useRef(0)
   const selectedTxidRef = useRef<string | null>(selectedTxid)
+  const auditModeRef = useRef<boolean>(auditMode)
+  const colorByCategoryRef = useRef<boolean>(colorByCategory)
+  const layoutModeRef = useRef<GraphLayoutMode>(layoutMode)
+  const previousLayoutModeRef = useRef<GraphLayoutMode>(layoutMode)
 
   useEffect(() => {
     selectedTxidRef.current = selectedTxid
   }, [selectedTxid])
 
+  useEffect(() => {
+    auditModeRef.current = auditMode
+  }, [auditMode])
+
+  useEffect(() => {
+    colorByCategoryRef.current = colorByCategory
+  }, [colorByCategory])
+  useEffect(() => {
+    layoutModeRef.current = layoutMode
+  }, [layoutMode])
+
   const runLayout = useCallback(
-    (reason: 'load' | 'reset') => {
-      const positionedNodes = layoutGraphLeftToRight(adaptedNodes, adaptedEdges)
+    (reason: 'load' | 'reset' | 'mode-change', mode: GraphLayoutMode) => {
+      const positionedNodes = layoutGraphByMode(adaptedNodes, adaptedEdges, mode)
       layoutRunCountRef.current += 1
 
       if (import.meta.env.DEV) {
-        console.debug(`[graph-layout] run #${layoutRunCountRef.current} (${reason})`)
+        console.debug(`[graph-layout] run #${layoutRunCountRef.current} (${reason}, mode=${mode})`)
       }
 
       return positionedNodes
@@ -93,14 +277,28 @@ function GraphViewport({
   )
 
   useEffect(() => {
-    const positionedNodes = runLayout('load')
-    setNodes(applySelectedTxid(positionedNodes, selectedTxidRef.current))
+    const didModeChange = previousLayoutModeRef.current !== layoutMode
+    previousLayoutModeRef.current = layoutMode
+
+    const positionedNodes = runLayout(didModeChange ? 'mode-change' : 'load', layoutMode)
+    const selectedNodes = applySelectedTxid(positionedNodes, selectedTxidRef.current)
+    setNodes(applyNodeVisualModes(selectedNodes, auditModeRef.current, colorByCategoryRef.current))
     setEdges(adaptedEdges)
-  }, [adaptedEdges, runLayout, setEdges, setNodes])
+
+    if (didModeChange && positionedNodes.length > 0) {
+      requestAnimationFrame(() => {
+        void reactFlow.fitView({ padding: 0.2, duration: 250 })
+      })
+    }
+  }, [adaptedEdges, layoutMode, reactFlow, runLayout, setEdges, setNodes])
 
   useEffect(() => {
     setNodes((currentNodes) => applySelectedTxid(currentNodes, selectedTxid))
   }, [selectedTxid, setNodes])
+
+  useEffect(() => {
+    setNodes((currentNodes) => applyNodeVisualModes(currentNodes, auditMode, colorByCategory))
+  }, [auditMode, colorByCategory, setNodes])
 
   const hasNodes = nodes.length > 0
 
@@ -121,9 +319,9 @@ function GraphViewport({
 
   const resetLayout = useCallback(() => {
     if (!hasNodes) return
-
-    const positionedNodes = runLayout('reset')
-    setNodes(applySelectedTxid(positionedNodes, selectedTxidRef.current))
+    const positionedNodes = runLayout('reset', layoutModeRef.current)
+    const selectedNodes = applySelectedTxid(positionedNodes, selectedTxidRef.current)
+    setNodes(applyNodeVisualModes(selectedNodes, auditModeRef.current, colorByCategoryRef.current))
     setEdges(adaptedEdges)
 
     requestAnimationFrame(() => {
@@ -185,19 +383,77 @@ function GraphViewport({
 }
 
 function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphCanvasProps) {
+  const showTransactions = useSyncExternalStore(
+    subscribeGraphControls,
+    getTransactionVisibilitySnapshot,
+    getTransactionVisibilitySnapshot,
+  )
+  const showOnlyPathsToSelected = useSyncExternalStore(
+    subscribeGraphControls,
+    getShowOnlyPathsToSelectedSnapshot,
+    getShowOnlyPathsToSelectedSnapshot,
+  )
+  const hideUnrelatedBranches = useSyncExternalStore(
+    subscribeGraphControls,
+    getHideUnrelatedBranchesSnapshot,
+    getHideUnrelatedBranchesSnapshot,
+  )
+  const depth = useSyncExternalStore(subscribeGraphControls, getDepthSnapshot, getDepthSnapshot)
+  const [debouncedDepth, setDebouncedDepth] = useState(depth)
+
+  useEffect(() => {
+    const debounceTimer = window.setTimeout(() => {
+      setDebouncedDepth(depth)
+    }, DEPTH_RELOAD_DEBOUNCE_MS)
+
+    return () => {
+      window.clearTimeout(debounceTimer)
+    }
+  }, [depth])
   const { graph, loading, error, reload } = useGraph({
     rootTxid,
-    depth: 10,
+    depth: debouncedDepth,
     reloadKey,
   })
-
-  const { nodes: adaptedNodes, edges: adaptedEdges } = useMemo(() => {
+  const { nodes: fullAdaptedNodes, edges: fullAdaptedEdges } = useMemo(() => {
     if (!graph) {
       return { nodes: [], edges: [] }
     }
 
     return adaptProvenanceGraphToReactFlow(graph)
   }, [graph])
+
+  const { nodes: statusFilteredNodes, edges: statusFilteredEdges } = useMemo(
+    () => filterGraphByTransactionStatus(fullAdaptedNodes, fullAdaptedEdges, showTransactions),
+    [fullAdaptedEdges, fullAdaptedNodes, showTransactions],
+  )
+  const { nodes: adaptedNodes, edges: adaptedEdges } = useMemo(
+    () =>
+      filterGraphBySelectionPathFocus(
+        statusFilteredNodes,
+        statusFilteredEdges,
+        selectedTxid,
+        showOnlyPathsToSelected,
+        hideUnrelatedBranches,
+      ),
+    [
+      hideUnrelatedBranches,
+      selectedTxid,
+      showOnlyPathsToSelected,
+      statusFilteredEdges,
+      statusFilteredNodes,
+    ],
+  )
+  const fullAdaptedNodeIds = useMemo(
+    () => new Set(fullAdaptedNodes.map((node) => node.id)),
+    [fullAdaptedNodes],
+  )
+
+  useEffect(() => {
+    if (!selectedTxid) return
+    if (fullAdaptedNodeIds.has(selectedTxid)) return
+    onSelectTxid(null)
+  }, [fullAdaptedNodeIds, onSelectTxid, selectedTxid])
 
   useEffect(() => {
     patchGraphControlsSnapshot({
@@ -292,7 +548,7 @@ function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphC
           {!loading &&
             !error &&
             graph &&
-            `Graph state: loaded (${adaptedNodes.length} nodes / ${adaptedEdges.length} edges)`}
+            `Graph state: loaded (${adaptedNodes.length}/${fullAdaptedNodes.length} nodes, ${adaptedEdges.length}/${fullAdaptedEdges.length} edges)`}
           {!loading &&
             !error &&
             !graph &&

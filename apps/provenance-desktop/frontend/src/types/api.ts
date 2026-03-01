@@ -46,6 +46,14 @@ export interface GraphSummary {
   mempool_nodes: number
 }
 
+export interface ProvenanceSetup {
+  args: {
+    url: string;
+    username: string | null;
+    password: string | null;
+  }
+}
+
 export interface ProvenanceGraph {
   nodes: GraphNode[]
   edges: GraphEdge[]

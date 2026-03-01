@@ -85,6 +85,14 @@
   --theme-graph-node-text-muted: var(--theme-text-secondary);
   --theme-graph-node-root-border: var(--theme-status-warning);
   --theme-graph-node-selected-ring: var(--theme-accent);
+  --theme-graph-node-audit-border: var(--theme-status-warning);
+  --theme-graph-node-audit-ring: var(--theme-status-warning);
+  --theme-graph-node-audit-surface: var(--theme-status-warning-soft);
+  --theme-graph-category-revenue: var(--color-green-500);
+  --theme-graph-category-expense: var(--color-red-600);
+  --theme-graph-category-internal-transfer: var(--color-blue-600);
+  --theme-graph-category-exchange-deposit: var(--color-orange-500);
+  --theme-graph-category-unknown: var(--color-gray-600);
 
   --theme-graph-status-confirmed: var(--theme-status-success);
   --theme-graph-status-mempool: var(--theme-status-warning);
@@ -191,6 +199,14 @@
   --theme-graph-node-text-muted: var(--theme-text-secondary);
   --theme-graph-node-root-border: var(--theme-status-warning);
   --theme-graph-node-selected-ring: var(--theme-accent);
+  --theme-graph-node-audit-border: var(--theme-status-warning);
+  --theme-graph-node-audit-ring: var(--theme-status-warning);
+  --theme-graph-node-audit-surface: var(--theme-status-warning-soft);
+  --theme-graph-category-revenue: var(--color-green-500);
+  --theme-graph-category-expense: var(--color-red-400);
+  --theme-graph-category-internal-transfer: var(--color-blue-500);
+  --theme-graph-category-exchange-deposit: var(--color-orange-500);
+  --theme-graph-category-unknown: var(--color-gray-300);
 
   --theme-graph-status-confirmed: var(--theme-status-success);
   --theme-graph-status-mempool: var(--theme-status-warning);

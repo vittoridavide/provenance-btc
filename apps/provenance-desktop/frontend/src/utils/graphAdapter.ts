@@ -1,5 +1,6 @@
 import type { Edge, Node } from 'reactflow'
 import type { GraphNode, ProvenanceGraph } from '../types/api'
+import type { CategoryPaletteKey } from './categoryPalette'
 
 const NODE_X_SPACING = 260
 const NODE_Y_SPACING = 170
@@ -16,6 +17,9 @@ export type GraphFlowNodeData = {
   node_label: string | null
   classification_category: string | null
   classification_state: GraphNode['classification_state']
+  audit_unclassified: boolean
+  category_palette_key: CategoryPaletteKey | null
+  category_neutral_indicator: boolean
   missing_parents_count: number
 }
 
@@ -76,6 +80,9 @@ export function adaptProvenanceGraphToReactFlow(graph: ProvenanceGraph): Adapted
         node_label: node.label,
         classification_category: node.classification_category,
         classification_state: node.classification_state,
+        audit_unclassified: false,
+        category_palette_key: null,
+        category_neutral_indicator: false,
         missing_parents_count: node.missing_parents_count,
       },
     }

@@ -7,10 +7,13 @@ function formatTxid(txid: string): string {
 }
 
 function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
-  const classes = ['transaction-node', `transaction-node--status-${data.status}`]
+  const classes = ['transaction-node']
 
   if (selected) classes.push('transaction-node--selected')
   if (data.is_root) classes.push('transaction-node--root')
+  if (data.audit_unclassified) classes.push('transaction-node--audit-unclassified')
+  if (data.category_palette_key) classes.push(`transaction-node--category-${data.category_palette_key}`)
+  if (data.category_neutral_indicator) classes.push('transaction-node--category-neutral-indicator')
 
   return (
     <div className={classes.join(' ')} title={data.txid}>
