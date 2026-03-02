@@ -6,7 +6,11 @@ type UseTransactionDetailResult = {
   detail: TransactionDetail | null
   loading: boolean
   error: string | null
-  reload: () => Promise<void>
+  reload: (request?: TransactionDetailReloadRequest) => Promise<void>
+}
+type TransactionDetailReloadRequest = {
+  txid?: string
+  throwOnError?: boolean
 }
 
 function toErrorMessage(error: unknown): string {
@@ -29,8 +33,10 @@ export function useTransactionDetail(
   const requestIdRef = useRef(0)
   const normalizedTxid = (txid ?? '').trim()
 
-  const reload = useCallback(async () => {
-    if (!normalizedTxid) {
+  const reload = useCallback(async (request?: TransactionDetailReloadRequest) => {
+    const nextTxid = (request?.txid ?? normalizedTxid).trim()
+
+    if (!nextTxid) {
       requestIdRef.current += 1
       setLoading(false)
       setError(null)
@@ -41,10 +47,11 @@ export function useTransactionDetail(
     const requestId = ++requestIdRef.current
     setLoading(true)
     setError(null)
+    setDetail(null)
 
     try {
       const txDetail = await invoke<TransactionDetail>('cmd_get_tx_detail', {
-        txid: normalizedTxid,
+        txid: nextTxid,
       })
 
       if (requestId !== requestIdRef.current) {
@@ -59,6 +66,9 @@ export function useTransactionDetail(
 
       setDetail(null)
       setError(toErrorMessage(invokeError))
+      if (request?.throwOnError) {
+        throw invokeError
+      }
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false)

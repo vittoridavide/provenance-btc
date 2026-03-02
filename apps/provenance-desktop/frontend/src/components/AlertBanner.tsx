@@ -1,12 +1,21 @@
 type AlertBannerProps = {
   visible?: boolean
-  message?: string
+  unclassifiedCount?: number
 }
 
-function AlertBanner({ visible = false, message = 'Alert Banner' }: AlertBannerProps) {
-  if (!visible) return null
+function AlertBanner({ visible = false, unclassifiedCount = 0 }: AlertBannerProps) {
+  if (!visible || unclassifiedCount <= 0) return null
 
-  return <div className="alert-banner state-tone state-tone--warning state-surface">{message}</div>
+  return (
+    <div className="alert-banner state-tone state-tone--warning state-surface">
+      <p className="alert-banner__text">
+        This transaction graph has {unclassifiedCount} unclassified transactions.
+      </p>
+      <p className="alert-banner__text">
+        Classification improves audit traceability and tax reporting.
+      </p>
+    </div>
+  )
 }
 
 export default AlertBanner

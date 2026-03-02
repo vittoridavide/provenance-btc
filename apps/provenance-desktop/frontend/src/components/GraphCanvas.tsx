@@ -11,6 +11,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { useGraph } from '../hooks/useGraph'
+import type { GraphSummary } from '../types/api'
 import {
   getGraphControlsSnapshot,
   clearGraphControlHandlers,
@@ -39,6 +40,8 @@ type GraphCanvasProps = {
   reloadKey: number
   selectedTxid: string | null
   onSelectTxid: (txid: string | null) => void
+  onGraphSummaryChange?: (summary: GraphSummary | null) => void
+  onRegisterRefresh?: (refresh: (() => Promise<void>) | null) => void
 }
 
 type GraphViewportProps = {
@@ -382,7 +385,14 @@ function GraphViewport({
   )
 }
 
-function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphCanvasProps) {
+function GraphCanvas({
+  rootTxid,
+  reloadKey,
+  selectedTxid,
+  onSelectTxid,
+  onGraphSummaryChange,
+  onRegisterRefresh,
+}: GraphCanvasProps) {
   const showTransactions = useSyncExternalStore(
     subscribeGraphControls,
     getTransactionVisibilitySnapshot,
@@ -415,6 +425,23 @@ function GraphCanvas({ rootTxid, reloadKey, selectedTxid, onSelectTxid }: GraphC
     depth: debouncedDepth,
     reloadKey,
   })
+  const refreshGraph = useCallback(async () => {
+    await reload({
+      rootTxid,
+      depth,
+      throwOnError: true,
+    })
+  }, [depth, reload, rootTxid])
+  useEffect(() => {
+    onRegisterRefresh?.(refreshGraph)
+
+    return () => {
+      onRegisterRefresh?.(null)
+    }
+  }, [onRegisterRefresh, refreshGraph])
+  useEffect(() => {
+    onGraphSummaryChange?.(graph?.summary ?? null)
+  }, [graph, onGraphSummaryChange])
   const { nodes: fullAdaptedNodes, edges: fullAdaptedEdges } = useMemo(() => {
     if (!graph) {
       return { nodes: [], edges: [] }

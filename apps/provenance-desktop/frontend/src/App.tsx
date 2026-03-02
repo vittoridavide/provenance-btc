@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import AlertBanner from './components/AlertBanner'
 import DetailPanel from './components/DetailPanel'
@@ -6,7 +6,7 @@ import GraphCanvas from './components/GraphCanvas'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import {invoke} from "@tauri-apps/api/core";
-import type {ProvenanceSetup} from "./types/api.ts";
+import type { GraphSummary, ProvenanceSetup } from './types/api.ts'
 const DEFAULT_ROOT_TXID = import.meta.env.VITE_PROVENANCE_GRAPH_ROOT_TXID ?? ''
 const COMPACT_LAYOUT_MAX_WIDTH = 1400
 const SIDEBAR_COLLAPSE_MAX_WIDTH = 1200
@@ -74,6 +74,8 @@ function App() {
   const [rootTxid, setRootTxid] = useState(DEFAULT_ROOT_TXID)
   const [graphReloadKey, setGraphReloadKey] = useState(0)
   const [selectedTxid, setSelectedTxid] = useState<string | null>(null)
+  const [graphSummary, setGraphSummary] = useState<GraphSummary | null>(null)
+  const graphRefreshRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
     function handleResize() {
@@ -105,7 +107,15 @@ function App() {
   const handleRootTxidSubmit = useCallback((nextRootTxid: string) => {
     setRootTxid(nextRootTxid)
     setSelectedTxid(null)
+    setGraphSummary(null)
     setGraphReloadKey((current) => current + 1)
+  }, [])
+  const handleSelectTxid = useCallback((nextSelectedTxid: string | null) => {
+    setSelectedTxid(nextSelectedTxid)
+
+    if (nextSelectedTxid && nextSelectedTxid.trim().length > 0) {
+      setDetailCollapsed(false)
+    }
   }, [])
 
   const workspaceClassName = useMemo(() => {
@@ -133,6 +143,21 @@ function App() {
   const handleToggleDetail = useCallback(() => {
     setDetailCollapsed((current) => !current)
   }, [])
+  const handleGraphSummaryChange = useCallback((nextGraphSummary: GraphSummary | null) => {
+    setGraphSummary(nextGraphSummary)
+  }, [])
+  const handleRegisterGraphRefresh = useCallback((refresh: (() => Promise<void>) | null) => {
+    graphRefreshRef.current = refresh
+  }, [])
+  const handleGraphRefresh = useCallback(async () => {
+    if (graphRefreshRef.current) {
+      await graphRefreshRef.current()
+      return
+    }
+
+    setGraphReloadKey((current) => current + 1)
+  }, [])
+  const unclassifiedNodeCount = graphSummary?.unclassified_nodes ?? 0
 
   return (
     <div className="app-shell">
@@ -145,7 +170,7 @@ function App() {
         onToggleSidebar={handleToggleSidebar}
         onToggleDetail={handleToggleDetail}
       />
-      <AlertBanner visible={false} message="Alert Banner" />
+      <AlertBanner visible={unclassifiedNodeCount > 0} unclassifiedCount={unclassifiedNodeCount} />
       <div className="workspace-scroll">
         <div className={workspaceClassName}>
           <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} />
@@ -153,9 +178,15 @@ function App() {
             rootTxid={rootTxid}
             reloadKey={graphReloadKey}
             selectedTxid={selectedTxid}
-            onSelectTxid={setSelectedTxid}
+            onSelectTxid={handleSelectTxid}
+            onGraphSummaryChange={handleGraphSummaryChange}
+            onRegisterRefresh={handleRegisterGraphRefresh}
           />
-          <DetailPanel selectedTxid={selectedTxid} collapsed={detailCollapsed} />
+          <DetailPanel
+            selectedTxid={selectedTxid}
+            collapsed={detailCollapsed}
+            onGraphRefresh={handleGraphRefresh}
+          />
         </div>
       </div>
     </div>

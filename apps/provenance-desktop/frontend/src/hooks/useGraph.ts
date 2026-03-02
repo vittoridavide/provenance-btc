@@ -11,12 +11,18 @@ type UseGraphParams = {
   options?: GraphBuildOptions
   reloadKey?: number
 }
+type GraphReloadRequest = {
+  rootTxid?: string
+  depth?: number
+  options?: GraphBuildOptions
+  throwOnError?: boolean
+}
 
 type UseGraphResult = {
   graph: ProvenanceGraph | null
   loading: boolean
   error: string | null
-  reload: () => Promise<void>
+  reload: (request?: GraphReloadRequest) => Promise<void>
 }
 
 function toErrorMessage(error: unknown): string {
@@ -51,9 +57,23 @@ export function useGraph({
     }
   }, [resolvedOptions])
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (request?: GraphReloadRequest) => {
     void reloadKey
-    if (!trimmedRootTxid) {
+    const nextRootTxid = (request?.rootTxid ?? trimmedRootTxid).trim()
+    const nextDepth = request?.depth ?? depth
+    const nextOptionsKey = (() => {
+      if (!request?.options) {
+        return optionsKey
+      }
+
+      try {
+        return JSON.stringify(request.options)
+      } catch {
+        return '{}'
+      }
+    })()
+
+    if (!nextRootTxid) {
       requestIdRef.current += 1
       setLoading(false)
       setError(null)
@@ -66,10 +86,10 @@ export function useGraph({
     setError(null)
 
     try {
-      const parsedOptions = JSON.parse(optionsKey) as GraphBuildOptions
+      const parsedOptions = JSON.parse(nextOptionsKey) as GraphBuildOptions
       const graphPayload = await invoke<ProvenanceGraph>('cmd_build_graph', {
-        rootTxid: trimmedRootTxid,
-        depth,
+        rootTxid: nextRootTxid,
+        depth: nextDepth,
         options: parsedOptions,
         _options: parsedOptions,
       })
@@ -84,6 +104,9 @@ export function useGraph({
         return
       }
       setError(toErrorMessage(invokeError))
+      if (request?.throwOnError) {
+        throw invokeError
+      }
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false)
