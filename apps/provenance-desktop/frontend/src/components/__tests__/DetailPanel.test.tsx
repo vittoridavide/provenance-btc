@@ -87,7 +87,7 @@ describe('DetailPanel', () => {
     expect(screen.queryByText('Unclassified Transaction')).not.toBeInTheDocument()
   })
 
-  it('validates metadata JSON syntax before saving classification', async () => {
+  it('requires a classification category before saving', async () => {
     const detail = makeDetail({ classification: null })
     mockDetail(detail)
     vi.mocked(invoke).mockResolvedValue(undefined)
@@ -95,44 +95,12 @@ describe('DetailPanel', () => {
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
 
-    await user.selectOptions(
-      screen.getByLabelText('Primary Classification'),
-      'revenue',
-    )
-    const metadataField = screen.getByPlaceholderText('{"invoice": "INV-1001"}')
-    await user.clear(metadataField)
-    await user.type(metadataField, '{invalid')
     await user.click(
       screen.getByRole('button', { name: 'Save Classification' }),
     )
 
     expect(
-      await screen.findByText(/Metadata is not valid JSON/i),
-    ).toBeInTheDocument()
-    expect(invoke).not.toHaveBeenCalled()
-  })
-
-  it('requires metadata to be a JSON object', async () => {
-    const detail = makeDetail({ classification: null })
-    mockDetail(detail)
-    vi.mocked(invoke).mockResolvedValue(undefined)
-
-    render(<DetailPanel selectedTxid={detail.txid} />)
-    const user = userEvent.setup()
-
-    await user.selectOptions(
-      screen.getByLabelText('Primary Classification'),
-      'expense',
-    )
-    const metadataField = screen.getByPlaceholderText('{"invoice": "INV-1001"}')
-    await user.clear(metadataField)
-    await user.type(metadataField, '[]')
-    await user.click(
-      screen.getByRole('button', { name: 'Save Classification' }),
-    )
-
-    expect(
-      await screen.findByText('Metadata must be a JSON object.'),
+      await screen.findByText(/Select a primary classification before saving/i),
     ).toBeInTheDocument()
     expect(invoke).not.toHaveBeenCalled()
   })

@@ -11,12 +11,10 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { useGraph } from '../hooks/useGraph'
-import type { GraphSummary } from '../types/api'
+import type { GraphSummary, ProvenanceGraph } from '../types/api'
 import {
   getGraphControlsSnapshot,
-  clearGraphControlHandlers,
   patchGraphControlsSnapshot,
-  registerGraphControlHandlers,
   subscribeGraphControls,
   type GraphLayoutMode,
   type TransactionVisibilityFilter,
@@ -41,7 +39,13 @@ type GraphCanvasProps = {
   selectedTxid: string | null
   onSelectTxid: (txid: string | null) => void
   onGraphSummaryChange?: (summary: GraphSummary | null) => void
+  onGraphDataChange?: (graph: ProvenanceGraph | null) => void
+  onRegisterViewActions?: (actions: GraphCanvasTopBarActions | null) => void
   onRegisterRefresh?: (refresh: (() => Promise<void>) | null) => void
+}
+export type GraphCanvasTopBarActions = {
+  fitView: () => void
+  resetLayout: () => void
 }
 
 type GraphViewportProps = {
@@ -49,6 +53,7 @@ type GraphViewportProps = {
   adaptedEdges: Edge[]
   selectedTxid: string | null
   onSelectTxid: (txid: string | null) => void
+  onRegisterViewActions?: (actions: GraphCanvasTopBarActions | null) => void
 }
 
 function applySelectedTxid<TNodeData>(
@@ -224,6 +229,7 @@ function GraphViewport({
   adaptedEdges,
   selectedTxid,
   onSelectTxid,
+  onRegisterViewActions,
 }: GraphViewportProps) {
   const auditMode = useSyncExternalStore(
     subscribeGraphControls,
@@ -310,15 +316,6 @@ function GraphViewport({
     void reactFlow.fitView({ padding: 0.2, duration: 250 })
   }, [hasNodes, reactFlow])
 
-  const zoomIn = useCallback(() => {
-    if (!hasNodes) return
-    void reactFlow.zoomIn({ duration: 150 })
-  }, [hasNodes, reactFlow])
-
-  const zoomOut = useCallback(() => {
-    if (!hasNodes) return
-    void reactFlow.zoomOut({ duration: 150 })
-  }, [hasNodes, reactFlow])
 
   const resetLayout = useCallback(() => {
     if (!hasNodes) return
@@ -347,18 +344,16 @@ function GraphViewport({
   }, [hasNodes, nodes.length])
 
   useEffect(() => {
-    registerGraphControlHandlers({
-      fit: fitToView,
-      reset: resetLayout,
-      zoomIn,
-      zoomOut,
+    onRegisterViewActions?.({
+      fitView: fitToView,
+      resetLayout,
     })
 
     return () => {
-      clearGraphControlHandlers()
+      onRegisterViewActions?.(null)
       patchGraphControlsSnapshot({ canControl: false, nodeCount: 0 })
     }
-  }, [fitToView, resetLayout, zoomIn, zoomOut])
+  }, [fitToView, onRegisterViewActions, resetLayout])
 
   useEffect(() => {
     if (!hasNodes) return
@@ -391,6 +386,8 @@ function GraphCanvas({
   selectedTxid,
   onSelectTxid,
   onGraphSummaryChange,
+  onGraphDataChange,
+  onRegisterViewActions,
   onRegisterRefresh,
 }: GraphCanvasProps) {
   const showTransactions = useSyncExternalStore(
@@ -442,6 +439,9 @@ function GraphCanvas({
   useEffect(() => {
     onGraphSummaryChange?.(graph?.summary ?? null)
   }, [graph, onGraphSummaryChange])
+  useEffect(() => {
+    onGraphDataChange?.(graph ?? null)
+  }, [graph, onGraphDataChange])
   const { nodes: fullAdaptedNodes, edges: fullAdaptedEdges } = useMemo(() => {
     if (!graph) {
       return { nodes: [], edges: [] }
@@ -507,6 +507,7 @@ function GraphCanvas({
             adaptedEdges={adaptedEdges}
             selectedTxid={selectedTxid}
             onSelectTxid={onSelectTxid}
+            onRegisterViewActions={onRegisterViewActions}
           />
         </ReactFlowProvider>
         {showRootPrompt && (

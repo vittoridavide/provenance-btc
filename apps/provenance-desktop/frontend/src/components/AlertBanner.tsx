@@ -7,7 +7,7 @@ function AlertBanner({ visible = false, unclassifiedCount = 0 }: AlertBannerProp
   if (!visible || unclassifiedCount <= 0) return null
 
   return (
-    <div className="alert-banner state-tone state-tone--warning state-surface">
+    <div className="alert-banner">
       <p className="alert-banner__text">
         This transaction graph has {unclassifiedCount} unclassified transactions.
       </p>

@@ -2,11 +2,11 @@
   color-scheme: light;
 
   /* Semantic surfaces (RGB triplets) */
-  --theme-surface-page: var(--color-gray-100);
+  --theme-surface-page: var(--color-gray-50);
   --theme-surface-shell: var(--color-gray-50);
   --theme-surface-panel: var(--color-gray-0);
-  --theme-surface-panel-muted: var(--color-gray-100);
-  --theme-surface-panel-strong: var(--color-gray-200);
+  --theme-surface-panel-muted: var(--color-gray-50);
+  --theme-surface-panel-strong: var(--color-gray-100);
   --theme-surface-overlay: var(--color-gray-0);
   --theme-surface-overlay-muted: var(--color-gray-100);
   --theme-surface-debug: var(--color-gray-900);

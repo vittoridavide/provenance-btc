@@ -1,16 +1,29 @@
-import { useState, useSyncExternalStore } from 'react'
-import type { FormEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import {
   getGraphControlsSnapshot,
   subscribeGraphControls,
-  triggerGraphControl,
 } from '../state/graphControls'
 
 const TXID_PATTERN = /^[0-9a-fA-F]{64}$/
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M10 10l3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 type TopBarProps = {
-  title?: string
   rootTxid: string
-  onSubmitRootTxid: (txid: string) => void
+  onSearchTxid: (txid: string) => void
+  onFitView: () => void
+  onResetLayout: () => void
+  onExportGraphJson: () => Promise<void> | void
+  onExportLabels: () => Promise<void> | void
+  onImportLabels: (file: File) => Promise<void> | void
   showPanelToggles: boolean
   sidebarCollapsed: boolean
   detailCollapsed: boolean
@@ -19,75 +32,77 @@ type TopBarProps = {
 }
 
 function TopBar({
-  title = 'Graph Workspace',
   rootTxid,
-  onSubmitRootTxid,
+  onSearchTxid,
+  onFitView,
+  onResetLayout,
+  onExportGraphJson,
+  onExportLabels,
+  onImportLabels,
   showPanelToggles,
   sidebarCollapsed,
   detailCollapsed,
   onToggleSidebar,
   onToggleDetail,
 }: TopBarProps) {
-  const { canControl, graphError, isGraphLoading } = useSyncExternalStore(
+  const { canControl, isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
     getGraphControlsSnapshot,
     getGraphControlsSnapshot,
   )
   const [searchInput, setSearchInput] = useState(rootTxid)
-  const [validationError, setValidationError] = useState<string | null>(null)
+  const [isImportingLabels, setIsImportingLabels] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const actionsDisabled = isGraphLoading || !canControl
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    setSearchInput(rootTxid)
+  }, [rootTxid])
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const normalized = searchInput.trim().toLowerCase()
+    if (!TXID_PATTERN.test(normalized)) return
+    setSearchInput(normalized)
+    onSearchTxid(normalized)
+  }
 
-    const normalizedInput = searchInput.trim().toLowerCase()
-    if (!TXID_PATTERN.test(normalizedInput)) {
-      setValidationError('Please enter a valid 64-character hexadecimal txid.')
+  async function handleImportLabelsChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) {
       return
     }
 
-    setValidationError(null)
-    setSearchInput(normalizedInput)
-    onSubmitRootTxid(normalizedInput)
+    setIsImportingLabels(true)
+
+    try {
+      await onImportLabels(file)
+    } finally {
+      setIsImportingLabels(false)
+      event.target.value = ''
+    }
   }
 
   return (
-    <header className="top-bar surface-panel">
-      <div className="top-bar__left">
-        <div className="top-bar__title section-header section-header--lg">{title}</div>
-        <form className="top-bar__search" onSubmit={handleSubmit}>
+    <header className="top-bar">
+      <span className="top-bar__title">Provenance Graph</span>
+      <form className="top-bar__search" onSubmit={handleSearchSubmit}>
+        <div className="top-bar__search-wrapper">
+          <span className="top-bar__search-icon">
+            <SearchIcon />
+          </span>
           <input
-            className="top-bar__search-input control-input"
+            className="top-bar__search-input"
             value={searchInput}
-            onChange={(event) => {
-              setSearchInput(event.target.value)
-              if (validationError) setValidationError(null)
-            }}
-            placeholder="txid (64 hex chars)"
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="txid / outpoint / address"
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
-          />
-          <button
-            type="submit"
-            className="top-bar__button top-bar__button--search control-button"
             disabled={isGraphLoading}
-          >
-            {isGraphLoading ? 'Loading…' : 'Load txid'}
-          </button>
-        </form>
-        {validationError && (
-          <p className="top-bar__error state-tone state-tone--error state-text">{validationError}</p>
-        )}
-        {!validationError && isGraphLoading && (
-          <p className="top-bar__status state-tone state-tone--loading state-text">
-            <span className="spinner spinner--sm" aria-hidden="true" />
-            <span>Loading graph…</span>
-          </p>
-        )}
-        {!validationError && !isGraphLoading && graphError && (
-          <p className="top-bar__status state-tone state-tone--error state-text">{graphError}</p>
-        )}
-      </div>
+          />
+        </div>
+      </form>
       <div className="top-bar__actions">
         {showPanelToggles && (
           <>
@@ -97,7 +112,7 @@ function TopBar({
               onClick={onToggleSidebar}
               aria-pressed={!sidebarCollapsed}
             >
-              {sidebarCollapsed ? 'Show filters' : 'Hide filters'}
+              {sidebarCollapsed ? 'Show controls' : 'Hide controls'}
             </button>
             <button
               type="button"
@@ -112,35 +127,50 @@ function TopBar({
         <button
           type="button"
           className="top-bar__button control-button"
-          onClick={() => triggerGraphControl('fit')}
-          disabled={!canControl}
+          onClick={onFitView}
+          disabled={actionsDisabled}
         >
           Fit to view
         </button>
         <button
           type="button"
           className="top-bar__button control-button"
-          onClick={() => triggerGraphControl('reset')}
-          disabled={!canControl}
+          onClick={onResetLayout}
+          disabled={actionsDisabled}
         >
           Reset layout
         </button>
         <button
           type="button"
           className="top-bar__button control-button"
-          onClick={() => triggerGraphControl('zoomOut')}
-          disabled={!canControl}
+          onClick={() => void onExportGraphJson()}
+          disabled={actionsDisabled}
         >
-          Zoom out
+          Export graph JSON
         </button>
         <button
           type="button"
           className="top-bar__button control-button"
-          onClick={() => triggerGraphControl('zoomIn')}
-          disabled={!canControl}
+          onClick={() => void onExportLabels()}
+          disabled={actionsDisabled}
         >
-          Zoom in
+          Export labels
         </button>
+        <button
+          type="button"
+          className="top-bar__button control-button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={actionsDisabled || isImportingLabels}
+        >
+          {isImportingLabels ? 'Importing…' : 'Import labels'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".jsonl,.ndjson,text/plain,application/x-ndjson"
+          onChange={(event) => void handleImportLabelsChange(event)}
+          style={{ display: 'none' }}
+        />
       </div>
     </header>
   )

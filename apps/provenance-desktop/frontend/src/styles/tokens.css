@@ -1,28 +1,28 @@
 :root {
   /* Primitive palette (RGB triplets) */
   --color-gray-0: 255 255 255;
-  --color-gray-50: 249 249 249;
-  --color-gray-100: 243 244 246;
-  --color-gray-200: 229 231 235;
-  --color-gray-300: 209 213 219;
-  --color-gray-400: 156 163 175;
-  --color-gray-500: 107 114 128;
-  --color-gray-600: 75 85 99;
+  --color-gray-50: 248 250 252;
+  --color-gray-100: 241 245 249;
+  --color-gray-200: 226 232 240;
+  --color-gray-300: 203 213 225;
+  --color-gray-400: 148 163 184;
+  --color-gray-500: 100 116 139;
+  --color-gray-600: 71 85 105;
   --color-gray-650: 33 53 71;
-  --color-gray-700: 55 65 81;
-  --color-gray-800: 31 41 55;
+  --color-gray-700: 51 65 85;
+  --color-gray-800: 30 41 59;
   --color-gray-850: 36 36 36;
-  --color-gray-900: 26 26 26;
-  --color-gray-950: 18 18 22;
+  --color-gray-900: 15 23 42;
+  --color-gray-950: 2 6 23;
   --color-gray-975: 17 24 39;
   --color-gray-1000: 12 14 20;
   --color-black: 0 0 0;
 
-  --color-blue-300: 196 181 253;
-  --color-blue-400: 167 139 250;
-  --color-blue-500: 116 123 255;
-  --color-blue-600: 100 108 255;
-  --color-blue-700: 83 91 242;
+  --color-blue-300: 147 197 253;
+  --color-blue-400: 96 165 250;
+  --color-blue-500: 59 130 246;
+  --color-blue-600: 37 99 235;
+  --color-blue-700: 29 78 216;
 
   --color-green-500: 45 212 191;
 
