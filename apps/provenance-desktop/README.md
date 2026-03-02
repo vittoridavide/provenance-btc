@@ -55,6 +55,14 @@ npm run tauri:dev
 # Build for production
 npm run tauri:build
 ```
+### Phase 4 manual smoke checklist
+
+1. Select a transaction node → detail panel loads.
+2. Save a label → graph and detail update.
+3. Delete a label → graph and detail update.
+4. Save a classification → warning removed, graph updates.
+5. Invalid metadata is blocked.
+6. No console errors.
 
 ## Features
 
