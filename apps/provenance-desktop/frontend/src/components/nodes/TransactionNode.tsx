@@ -1,5 +1,9 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useSyncExternalStore } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
+import {
+  getGraphControlsSnapshot,
+  subscribeGraphControls,
+} from '../../state/graphControls'
 import type { GraphFlowNodeData } from '../../utils/graphAdapter'
 
 function formatHeaderTxid(txid: string): string {
@@ -129,8 +133,17 @@ function labelingIndicator(labelingState: GraphFlowNodeData['labeling_state']) {
   }
   return null
 }
+function getLayoutModeSnapshot() {
+  return getGraphControlsSnapshot().layoutMode
+}
 
 function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
+  const layoutMode = useSyncExternalStore(
+    subscribeGraphControls,
+    getLayoutModeSnapshot,
+    getLayoutModeSnapshot,
+  )
+  const isLeftToRightLayout = layoutMode === 'lr'
   const classes = ['transaction-node-card']
   if (selected) classes.push('transaction-node-card--selected')
   if (data.is_root) classes.push('transaction-node-card--root')
@@ -158,7 +171,7 @@ function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={isLeftToRightLayout ? Position.Left : Position.Top}
         isConnectable={false}
         className="transaction-node-card__handle"
       />
@@ -252,7 +265,7 @@ function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
 
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={isLeftToRightLayout ? Position.Right : Position.Bottom}
         isConnectable={false}
         className="transaction-node-card__handle"
       />
