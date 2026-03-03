@@ -5,7 +5,7 @@ import DetailPanel from './components/DetailPanel'
 import GraphCanvas, { type GraphCanvasTopBarActions } from './components/GraphCanvas'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
-import type { GraphSummary, ImportSummary, ProvenanceGraph, ProvenanceSetup } from './types/api'
+import type { ImportSummary, ProvenanceGraph, ProvenanceSetup } from './types/api'
 const DEFAULT_ROOT_TXID = import.meta.env.VITE_PROVENANCE_GRAPH_ROOT_TXID ?? ''
 const COMPACT_LAYOUT_MAX_WIDTH = 1400
 const SIDEBAR_COLLAPSE_MAX_WIDTH = 1200
@@ -111,7 +111,6 @@ function App() {
   const [graphReloadKey, setGraphReloadKey] = useState(0)
   const [selectedTxid, setSelectedTxid] = useState<string | null>(null)
   const [graphData, setGraphData] = useState<ProvenanceGraph | null>(null)
-  const [graphSummary, setGraphSummary] = useState<GraphSummary | null>(null)
   const graphViewActionsRef = useRef<GraphCanvasTopBarActions | null>(null)
   const graphRefreshRef = useRef<(() => Promise<void>) | null>(null)
 
@@ -178,9 +177,6 @@ function App() {
   const handleToggleDetail = useCallback(() => {
     setDetailCollapsed((current) => !current)
   }, [])
-  const handleGraphSummaryChange = useCallback((nextGraphSummary: GraphSummary | null) => {
-    setGraphSummary(nextGraphSummary)
-  }, [])
   const handleGraphDataChange = useCallback((nextGraphData: ProvenanceGraph | null) => {
     setGraphData(nextGraphData)
   }, [])
@@ -201,7 +197,8 @@ function App() {
   const handleFitView = useCallback(() => {
     graphViewActionsRef.current?.fitView()
   }, [])
-  const handleFocusNode = useCallback((_txid: string) => {
+  const handleFocusNode = useCallback((txid: string) => {
+    void txid
     // Focus the viewport on the selected node — for now uses full-graph fit
     graphViewActionsRef.current?.fitView()
   }, [])
@@ -273,7 +270,6 @@ function App() {
               reloadKey={graphReloadKey}
               selectedTxid={selectedTxid}
               onSelectTxid={handleSelectTxid}
-              onGraphSummaryChange={handleGraphSummaryChange}
               onGraphDataChange={handleGraphDataChange}
               onRegisterViewActions={handleRegisterViewActions}
               onRegisterRefresh={handleRegisterGraphRefresh}

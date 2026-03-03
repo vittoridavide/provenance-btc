@@ -2,10 +2,10 @@ import dagre from 'dagre'
 import type { Edge, Node } from 'reactflow'
 import type { GraphLayoutMode } from '../state/graphControls'
 
-const DEFAULT_NODE_WIDTH = 220
-const DEFAULT_NODE_HEIGHT = 96
-const DEFAULT_RANK_SEP = 120
-const DEFAULT_NODE_SEP = 72
+const DEFAULT_NODE_WIDTH = 280
+const DEFAULT_NODE_HEIGHT = 220
+const DEFAULT_RANK_SEP = 400
+const DEFAULT_NODE_SEP = 180
 const DEFAULT_RADIAL_RING_GAP = 240
 const DEFAULT_RADIAL_MIN_NODES_PER_RING = 6
 const FULL_CIRCLE_RADIANS = Math.PI * 2

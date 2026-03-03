@@ -740,6 +740,20 @@
   font-size: var(--font-size-md-2);
 }
 
+.graph-canvas__state-card--empty {
+  align-items: center;
+  text-align: center;
+  color: #475569;
+  border-color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.graph-canvas__empty-icon {
+  width: 48px;
+  height: 48px;
+  color: #94a3b8;
+}
+
 .graph-canvas__state-row {
   display: inline-flex;
   align-items: center;
@@ -771,62 +785,29 @@
 .graph-canvas__banner--loading {
   justify-content: flex-start;
 }
-
-.graph-state-debug {
-  position: absolute;
-  left: var(--space-12);
-  bottom: var(--space-12);
-  z-index: var(--z-banner);
-  max-width: calc(100% - (var(--space-12) * 2));
-  border-radius: var(--radius-xs);
-  border: 1px solid rgba(var(--theme-border-default), 0.75);
-  background: rgba(var(--theme-surface-debug), 0.72);
-  padding: var(--space-3) var(--space-7);
-  font-size: var(--font-size-sm-2);
-  font-weight: var(--font-weight-medium);
-  color: rgb(var(--theme-text-inverse));
-  white-space: nowrap;
-  overflow: hidden;
+.graph-canvas-inner--refreshing .react-flow {
+  opacity: 0.55;
+  transition: opacity 200ms ease;
   text-overflow: ellipsis;
 }
 .graph-canvas .react-flow__pane {
-  background: rgb(var(--theme-surface-page));
-}
-
-.graph-canvas .react-flow__edge-path {
-  stroke: rgb(var(--theme-graph-edge-stroke));
-  stroke-width: 1.5;
-}
-
-.graph-canvas .react-flow__edge.selected .react-flow__edge-path,
-.graph-canvas .react-flow__edge:focus .react-flow__edge-path,
-.graph-canvas .react-flow__edge:focus-visible .react-flow__edge-path {
-  stroke: rgb(var(--theme-graph-edge-stroke-active));
-}
-
-.graph-canvas .react-flow__edge-text {
-  fill: rgb(var(--theme-graph-edge-label));
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-}
-
-.graph-canvas .react-flow__edge-textbg {
-  fill: rgba(var(--theme-graph-edge-label-bg), 0.92);
+  background: #f8fafc;
 }
 
 .graph-canvas .react-flow__controls {
-  border: 1px solid rgba(var(--theme-graph-control-border), 0.9);
-  border-radius: var(--radius-md);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: var(--theme-shadow-sm);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+  background: #ffffff;
 }
 
 .graph-canvas .react-flow__controls-button {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border: none;
-  border-bottom: 1px solid rgba(var(--theme-graph-control-border), 0.75);
-  background: rgb(var(--theme-graph-control-surface));
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
 }
 
 .graph-canvas .react-flow__controls-button:last-child {
@@ -834,26 +815,449 @@
 }
 
 .graph-canvas .react-flow__controls-button:hover {
-  background: rgb(var(--theme-graph-control-surface-hover));
+  background: #f8fafc;
 }
 
 .graph-canvas .react-flow__controls-button svg {
-  fill: rgb(var(--theme-graph-control-icon));
+  fill: #475569;
 }
 
 .graph-canvas .react-flow__controls-button:hover svg {
-  fill: rgb(var(--theme-graph-control-icon-hover));
+  fill: #1e293b;
 }
 
-.graph-canvas .react-flow__attribution {
-  border-radius: var(--radius-xs);
-  border: 1px solid rgba(var(--theme-graph-control-border), 0.8);
-  background: rgba(var(--theme-graph-control-surface), 0.88);
-  color: rgb(var(--theme-graph-edge-label));
+.graph-canvas .react-flow__minimap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+  background: #ffffff;
 }
 
-.graph-canvas .react-flow__attribution a {
-  color: inherit;
+.graph-canvas .react-flow__minimap-mask {
+  fill: rgba(255, 255, 255, 0.72);
+}
+
+.transaction-flow__minimap {
+  width: 200px !important;
+  height: 150px !important;
+}
+
+.transaction-edge {
+  cursor: pointer;
+}
+
+.transaction-edge__label {
+  position: absolute;
+  pointer-events: all;
+  user-select: none;
+  white-space: nowrap;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  font-size: 11px;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
+}
+
+.transaction-edge__label--hovered {
+  color: #334155;
+}
+
+.transaction-edge__label--selected {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e3a8a;
+}
+
+.transaction-node-card {
+  width: 280px;
+  display: block;
+  position: relative;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+  overflow: hidden;
+  transition: all 200ms ease;
+}
+
+.transaction-node-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.14);
+}
+
+.transaction-node-card--missing {
+  border-style: dashed;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.transaction-node-card--root {
+  box-shadow:
+    0 0 0 2px #3b82f6,
+    0 0 0 4px #ffffff,
+    0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.transaction-node-card--audit-unclassified {
+  background:
+    linear-gradient(0deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.08)),
+    #ffffff;
+}
+
+.transaction-node-card--classified-revenue {
+  border-color: #6ee7b7;
+}
+
+.transaction-node-card--classified-expense {
+  border-color: #fca5a5;
+}
+
+.transaction-node-card--classified-internal-transfer {
+  border-color: #94a3b8;
+}
+
+.transaction-node-card--classified-loan {
+  border-color: #d8b4fe;
+}
+
+.transaction-node-card--classified-owner-contribution {
+  border-color: #60a5fa;
+}
+
+.transaction-node-card--classified-refund {
+  border-color: #fcd34d;
+}
+
+.transaction-node-card--classified-salary {
+  border-color: #fdba74;
+}
+
+.transaction-node-card--classified-tax-payment {
+  border-color: #fda4af;
+}
+
+.transaction-node-card--classified-other,
+.transaction-node-card--classified-unknown,
+.transaction-node-card--classified-exchange-deposit {
+  border-color: #d1d5db;
+}
+
+.transaction-node-card--selected,
+.transaction-node-card--selected:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.24);
+}
+
+.transaction-node-card--selected.transaction-node-card--root {
+  box-shadow:
+    0 0 0 2px #3b82f6,
+    0 0 0 4px #ffffff,
+    0 12px 24px rgba(59, 130, 246, 0.24);
+}
+
+.transaction-node-card--category-revenue:not(.transaction-node-card--selected) {
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.transaction-node-card--category-expense:not(.transaction-node-card--selected) {
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.transaction-node-card--category-internal-transfer:not(.transaction-node-card--selected) {
+  border-color: rgba(100, 116, 139, 0.55);
+}
+
+.transaction-node-card--category-loan:not(.transaction-node-card--selected) {
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+.transaction-node-card--category-owner-contribution:not(.transaction-node-card--selected) {
+  border-color: rgba(59, 130, 246, 0.55);
+}
+
+.transaction-node-card--category-refund:not(.transaction-node-card--selected),
+.transaction-node-card--category-salary:not(.transaction-node-card--selected) {
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.transaction-node-card--category-tax-payment:not(.transaction-node-card--selected) {
+  border-color: rgba(244, 63, 94, 0.5);
+}
+
+.transaction-node-card--category-other:not(.transaction-node-card--selected),
+.transaction-node-card--category-unknown:not(.transaction-node-card--selected),
+.transaction-node-card--category-exchange-deposit:not(.transaction-node-card--selected),
+.transaction-node-card--category-neutral-indicator:not(.transaction-node-card--selected) {
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.transaction-node-card__header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transaction-node-card__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.transaction-node-card__txid {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  font-size: 13px;
+  color: #334155;
+}
+
+.transaction-node-card__header-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transaction-node-card__state-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.transaction-node-card__state-icon--ok {
+  color: #059669;
+}
+
+.transaction-node-card__state-icon--warn {
+  color: #d97706;
+}
+
+.transaction-node-card__state-icon--error {
+  color: #dc2626;
+}
+
+.transaction-node-card__copy-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.transaction-node-card__copy-btn:hover {
+  background: #f1f5f9;
+}
+
+.transaction-node-card__copy-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.transaction-node-card__classification-row {
+  margin-top: 2px;
+}
+
+.transaction-node-card__classification-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.transaction-node-card__classification-badge--revenue {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.transaction-node-card__classification-badge--expense {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.transaction-node-card__classification-badge--internal-transfer {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.transaction-node-card__classification-badge--loan {
+  background: #faf5ff;
+  color: #7e22ce;
+  border-color: #e9d5ff;
+}
+
+.transaction-node-card__classification-badge--owner-contribution {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.transaction-node-card__classification-badge--refund {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.transaction-node-card__classification-badge--salary {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #fdba74;
+}
+
+.transaction-node-card__classification-badge--tax-payment {
+  background: #fff1f2;
+  color: #be123c;
+  border-color: #fecdd3;
+}
+
+.transaction-node-card__classification-badge--other,
+.transaction-node-card__classification-badge--unknown,
+.transaction-node-card__classification-badge--exchange-deposit {
+  background: #f9fafb;
+  color: #374151;
+  border-color: #e5e7eb;
+}
+
+.transaction-node-card__content {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transaction-node-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.transaction-node-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid;
+  padding: 4px 8px;
+}
+
+.transaction-node-card__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.transaction-node-card__status-alert {
+  width: 12px;
+  height: 12px;
+}
+
+.transaction-node-card__badge--status-confirmed {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.transaction-node-card__badge--status-mempool {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.transaction-node-card__badge--status-missing {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+}
+
+.transaction-node-card__badge--confirmations {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.transaction-node-card__badge--script {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.transaction-node-card__metrics {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.transaction-node-card__metric-label {
+  color: #94a3b8;
+}
+
+.transaction-node-card__metric-value {
+  color: #334155;
+}
+
+.transaction-node-card__output-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.transaction-node-card__output-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #3b82f6;
+}
+
+.transaction-node-card__footer {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.transaction-node-card__handle {
+  width: 12px;
+  height: 12px;
+  border: none;
+  background: transparent;
+  opacity: 0;
 }
 
 /* ===================================================================
@@ -1213,168 +1617,6 @@
   color: rgb(120, 53, 15);
 }
 
-.transaction-node {
-  --tx-node-accent-color: var(--theme-graph-node-border);
-  --tx-node-root-ring: 0 0 0 0 rgba(var(--theme-graph-node-root-border), 0);
-  --tx-node-audit-ring: 0 0 0 0 rgba(var(--theme-graph-node-audit-ring), 0);
-  --tx-node-selected-ring: 0 0 0 0 rgba(var(--theme-graph-node-selected-ring), 0);
-  --tx-node-category-indicator-ring: 0 0 0 0 rgba(var(--theme-graph-node-border), 0);
-  min-width: 180px;
-  max-width: 220px;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(var(--theme-graph-node-border), 0.95);
-  border-inline-start: 3px solid rgba(var(--tx-node-accent-color), 0.88);
-  background: rgb(var(--theme-graph-node-bg));
-  color: rgb(var(--theme-graph-node-text));
-  box-shadow:
-    var(--tx-node-root-ring),
-    var(--tx-node-audit-ring),
-    var(--tx-node-selected-ring),
-    var(--tx-node-category-indicator-ring),
-    var(--theme-shadow-sm);
-  padding: var(--space-8) var(--space-10);
-  transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease,
-    transform 120ms ease;
-}
-
-.transaction-node:hover {
-  border-color: rgba(var(--theme-graph-node-border-hover), 0.95);
-  box-shadow: var(--tx-node-root-ring), var(--tx-node-audit-ring), var(--tx-node-selected-ring), var(--theme-shadow-md);
-  transform: translateY(-1px);
-}
-
-.transaction-node--selected {
-  --tx-node-selected-ring: 0 0 0 2px rgba(var(--theme-graph-node-selected-ring), 0.35);
-}
-
-.transaction-node--audit-unclassified {
-  --tx-node-audit-ring: 0 0 0 2px rgba(var(--theme-graph-node-audit-ring), 0.45);
-  border-color: rgba(var(--theme-graph-node-audit-border), 0.95);
-  background:
-    linear-gradient(
-      0deg,
-      rgba(var(--theme-graph-node-audit-surface), 0.14),
-      rgba(var(--theme-graph-node-audit-surface), 0.14)
-    ),
-    rgb(var(--theme-graph-node-bg));
-}
-
-.transaction-node--root {
-  --tx-node-root-ring: inset 0 0 0 1px rgba(var(--theme-graph-node-root-border), 0.88);
-}
-
-.transaction-node--category-revenue {
-  --tx-node-accent-color: var(--theme-graph-category-revenue);
-}
-
-.transaction-node--category-expense {
-  --tx-node-accent-color: var(--theme-graph-category-expense);
-}
-
-.transaction-node--category-internal-transfer {
-  --tx-node-accent-color: var(--theme-graph-category-internal-transfer);
-}
-
-.transaction-node--category-exchange-deposit {
-  --tx-node-accent-color: var(--theme-graph-category-exchange-deposit);
-}
-
-.transaction-node--category-unknown {
-  --tx-node-accent-color: var(--theme-graph-category-unknown);
-}
-
-.transaction-node--category-neutral-indicator {
-  --tx-node-category-indicator-ring: inset 0 0 0 1px rgba(var(--theme-graph-node-border), 0.62);
-}
-
-
-.transaction-node__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-7);
-}
-
-.transaction-node__txid {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-  font-size: var(--font-size-sm-4);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0.02em;
-}
-
-.transaction-node__label {
-  margin-top: var(--space-3);
-  color: rgb(var(--theme-graph-node-text-muted));
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.transaction-node__meta {
-  margin-top: var(--space-6);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-}
-
-.tx-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-pill);
-  border: 1px solid rgba(var(--theme-graph-node-border), 0.7);
-  background: rgba(var(--theme-graph-node-bg), 0.7);
-  color: rgb(var(--theme-graph-node-text-muted));
-  padding: var(--space-1) var(--space-6);
-  font-size: var(--font-size-2xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-
-.tx-badge--classification {
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tx-badge--root {
-  color: rgb(var(--theme-graph-node-root-border));
-  border-color: rgba(var(--theme-graph-node-root-border), 0.5);
-  background: rgba(var(--theme-graph-node-root-border), 0.14);
-}
-
-.tx-badge--status {
-  --tx-badge-status-color: var(--theme-graph-status-mempool);
-  color: rgb(var(--tx-badge-status-color));
-  border-color: rgba(var(--tx-badge-status-color), 0.46);
-  background: rgba(var(--tx-badge-status-color), 0.14);
-}
-
-.tx-badge--status-confirmed {
-  --tx-badge-status-color: var(--theme-graph-status-confirmed);
-}
-
-.tx-badge--status-mempool {
-  --tx-badge-status-color: var(--theme-graph-status-mempool);
-}
-
-.tx-badge--status-missing {
-  --tx-badge-status-color: var(--theme-graph-status-missing);
-}
-
-.tx-badge--status-unknown {
-  --tx-badge-status-color: var(--theme-text-muted);
-}
-
-.tx-node-handle {
-  width: 8px;
-  height: 8px;
-  border: 1px solid rgba(var(--theme-graph-handle-border), 0.7);
-  background: rgb(var(--theme-graph-handle));
-}
 
 .alert-banner {
   min-height: 44px;
@@ -1402,10 +1644,5 @@
   .top-bar__actions {
     justify-content: flex-start;
     flex-wrap: wrap;
-  }
-
-  .transaction-node {
-    min-width: 164px;
-    max-width: 204px;
   }
 }

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import ReactFlow, {
+  Background,
+  BackgroundVariant,
+  Controls,
+  MiniMap,
   ReactFlowProvider,
-  type Edge,
+  type EdgeTypes,
   type Node,
   type NodeTypes,
   useEdgesState,
@@ -11,7 +15,6 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { useGraph } from '../hooks/useGraph'
-import type { GraphSummary, ProvenanceGraph } from '../types/api'
 import {
   getGraphControlsSnapshot,
   patchGraphControlsSnapshot,
@@ -19,19 +22,30 @@ import {
   type GraphLayoutMode,
   type TransactionVisibilityFilter,
 } from '../state/graphControls'
+import type { GraphSummary, ProvenanceGraph } from '../types/api'
+import { categoryColorHexByKey, resolveCategoryNodeStyle } from '../utils/categoryPalette'
 import {
+  type GraphFlowEdge,
   type GraphFlowNodeData,
+  TRANSACTION_EDGE_TYPE,
   TRANSACTION_NODE_TYPE,
   adaptProvenanceGraphToReactFlow,
 } from '../utils/graphAdapter'
-import { resolveCategoryNodeStyle } from '../utils/categoryPalette'
 import { layoutGraphByMode } from '../utils/layout'
+import TransactionEdge from './edges/TransactionEdge'
 import TransactionNode from './nodes/TransactionNode'
 
 const nodeTypes = {
   [TRANSACTION_NODE_TYPE]: TransactionNode,
 } satisfies NodeTypes
+
+const edgeTypes = {
+  [TRANSACTION_EDGE_TYPE]: TransactionEdge,
+} satisfies EdgeTypes
+
 const DEPTH_RELOAD_DEBOUNCE_MS = 250
+const DEFAULT_EDGE_STROKE = '#94a3b8'
+const CATEGORY_EDGE_OPACITY = 0.3
 
 type GraphCanvasProps = {
   rootTxid: string
@@ -43,6 +57,7 @@ type GraphCanvasProps = {
   onRegisterViewActions?: (actions: GraphCanvasTopBarActions | null) => void
   onRegisterRefresh?: (refresh: (() => Promise<void>) | null) => void
 }
+
 export type GraphCanvasTopBarActions = {
   fitView: () => void
   resetLayout: () => void
@@ -50,10 +65,54 @@ export type GraphCanvasTopBarActions = {
 
 type GraphViewportProps = {
   adaptedNodes: Node<GraphFlowNodeData>[]
-  adaptedEdges: Edge[]
+  adaptedEdges: GraphFlowEdge[]
   selectedTxid: string | null
   onSelectTxid: (txid: string | null) => void
   onRegisterViewActions?: (actions: GraphCanvasTopBarActions | null) => void
+}
+
+function DatabaseIcon() {
+  return (
+    <svg className="graph-canvas__empty-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <ellipse cx="24" cy="10" rx="14" ry="5.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M10 10v12c0 3 6.3 5.5 14 5.5S38 25 38 22V10" stroke="currentColor" strokeWidth="2" />
+      <path d="M10 22v12c0 3 6.3 5.5 14 5.5S38 37 38 34V22" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  )
+}
+
+function withOpacity(hexColor: string, opacity: number): string {
+  const hex = hexColor.replace('#', '')
+  if (hex.length !== 6) {
+    return hexColor
+  }
+  const red = Number.parseInt(hex.slice(0, 2), 16)
+  const green = Number.parseInt(hex.slice(2, 4), 16)
+  const blue = Number.parseInt(hex.slice(4, 6), 16)
+  if ([red, green, blue].some((value) => Number.isNaN(value))) {
+    return hexColor
+  }
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`
+}
+
+function resolveMiniMapNodeColor(node: Node<GraphFlowNodeData>, colorByCategory: boolean): string {
+  if (colorByCategory) {
+    const categoryHex = categoryColorHexByKey(node.data.classification_key)
+    if (categoryHex) {
+      return categoryHex
+    }
+  }
+
+  if (node.data.is_root) {
+    return '#3b82f6'
+  }
+  if (node.data.status === 'confirmed') {
+    return '#10b981'
+  }
+  if (node.data.status === 'mempool') {
+    return '#f59e0b'
+  }
+  return '#94a3b8'
 }
 
 function applySelectedTxid<TNodeData>(
@@ -64,11 +123,9 @@ function applySelectedTxid<TNodeData>(
 
   const nextNodes = nodes.map((node) => {
     const isSelected = selectedTxid !== null && node.id === selectedTxid
-
     if (node.selected === isSelected) {
       return node
     }
-
     hasChanges = true
     return { ...node, selected: isSelected }
   })
@@ -79,30 +136,36 @@ function applySelectedTxid<TNodeData>(
 function getAuditModeSnapshot(): boolean {
   return getGraphControlsSnapshot().auditMode
 }
+
 function getColorByCategorySnapshot(): boolean {
   return getGraphControlsSnapshot().colorByCategory
 }
+
 function getTransactionVisibilitySnapshot(): TransactionVisibilityFilter {
   return getGraphControlsSnapshot().showTransactions
 }
+
 function getShowOnlyPathsToSelectedSnapshot(): boolean {
   return getGraphControlsSnapshot().showOnlyPathsToSelected
 }
+
 function getHideUnrelatedBranchesSnapshot(): boolean {
   return getGraphControlsSnapshot().hideUnrelatedBranches
 }
+
 function getDepthSnapshot(): number {
   return getGraphControlsSnapshot().depth
 }
+
 function getLayoutModeSnapshot(): GraphLayoutMode {
   return getGraphControlsSnapshot().layoutMode
 }
 
 function filterGraphByTransactionStatus(
   nodes: Node<GraphFlowNodeData>[],
-  edges: Edge[],
+  edges: GraphFlowEdge[],
   showTransactions: TransactionVisibilityFilter,
-): { nodes: Node<GraphFlowNodeData>[]; edges: Edge[] } {
+): { nodes: Node<GraphFlowNodeData>[]; edges: GraphFlowEdge[] } {
   if (showTransactions === 'all') {
     return { nodes, edges }
   }
@@ -116,10 +179,7 @@ function filterGraphByTransactionStatus(
   return { nodes: filteredNodes, edges: filteredEdges }
 }
 
-function collectReachableNodeIds(
-  startNodeId: string,
-  adjacency: Map<string, string[]>,
-): Set<string> {
+function collectReachableNodeIds(startNodeId: string, adjacency: Map<string, string[]>): Set<string> {
   const reachableNodeIds = new Set<string>([startNodeId])
   const queue = [startNodeId]
   let cursor = 0
@@ -142,13 +202,12 @@ function collectReachableNodeIds(
 
 function filterGraphBySelectionPathFocus(
   nodes: Node<GraphFlowNodeData>[],
-  edges: Edge[],
+  edges: GraphFlowEdge[],
   selectedTxid: string | null,
   showOnlyPathsToSelected: boolean,
   hideUnrelatedBranches: boolean,
-): { nodes: Node<GraphFlowNodeData>[]; edges: Edge[] } {
+): { nodes: Node<GraphFlowNodeData>[]; edges: GraphFlowEdge[] } {
   const shouldFilterBySelectionPath = showOnlyPathsToSelected || hideUnrelatedBranches
-
   if (!shouldFilterBySelectionPath || !selectedTxid) {
     return { nodes, edges }
   }
@@ -175,8 +234,8 @@ function filterGraphBySelectionPathFocus(
     reverseAdjacency.set(edge.target, targetNeighbors)
   }
 
-  const ancestorNodeIds = collectReachableNodeIds(selectedTxid, forwardAdjacency)
-  const descendantNodeIds = collectReachableNodeIds(selectedTxid, reverseAdjacency)
+  const ancestorNodeIds = collectReachableNodeIds(selectedTxid, reverseAdjacency)
+  const descendantNodeIds = collectReachableNodeIds(selectedTxid, forwardAdjacency)
   const focusedNodeIds = new Set([...ancestorNodeIds, ...descendantNodeIds])
 
   const focusedNodes = nodes.filter((node) => focusedNodeIds.has(node.id))
@@ -224,6 +283,48 @@ function applyNodeVisualModes(
   return hasChanges ? nextNodes : nodes
 }
 
+function applyEdgeVisualModes(
+  edges: GraphFlowEdge[],
+  nodes: Node<GraphFlowNodeData>[],
+  colorByCategory: boolean,
+): GraphFlowEdge[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  let hasChanges = false
+
+  const nextEdges = edges.map((edge) => {
+    let nextStroke = DEFAULT_EDGE_STROKE
+
+    if (colorByCategory) {
+      const sourceNode = nodeById.get(edge.source)
+      const targetNode = nodeById.get(edge.target)
+      const sourcePalette = sourceNode?.data.classification_key ?? null
+      const targetPalette = targetNode?.data.classification_key ?? null
+      if (sourcePalette && sourcePalette === targetPalette) {
+        const categoryColor = categoryColorHexByKey(sourcePalette)
+        if (categoryColor) {
+          nextStroke = withOpacity(categoryColor, CATEGORY_EDGE_OPACITY)
+        }
+      }
+    }
+
+    if (edge.style?.stroke === nextStroke && edge.style?.strokeWidth === 2) {
+      return edge
+    }
+
+    hasChanges = true
+    return {
+      ...edge,
+      style: {
+        ...edge.style,
+        stroke: nextStroke,
+        strokeWidth: 2,
+      },
+    }
+  })
+
+  return hasChanges ? nextEdges : edges
+}
+
 function GraphViewport({
   adaptedNodes,
   adaptedEdges,
@@ -248,7 +349,7 @@ function GraphViewport({
   )
   const reactFlow = useReactFlow<GraphFlowNodeData>()
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphFlowNodeData>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<GraphFlowEdge['data']>([])
   const layoutRunCountRef = useRef(0)
   const selectedTxidRef = useRef<string | null>(selectedTxid)
   const auditModeRef = useRef<boolean>(auditMode)
@@ -267,6 +368,7 @@ function GraphViewport({
   useEffect(() => {
     colorByCategoryRef.current = colorByCategory
   }, [colorByCategory])
+
   useEffect(() => {
     layoutModeRef.current = layoutMode
   }, [layoutMode])
@@ -275,11 +377,9 @@ function GraphViewport({
     (reason: 'load' | 'reset' | 'mode-change', mode: GraphLayoutMode) => {
       const positionedNodes = layoutGraphByMode(adaptedNodes, adaptedEdges, mode)
       layoutRunCountRef.current += 1
-
       if (import.meta.env.DEV) {
         console.debug(`[graph-layout] run #${layoutRunCountRef.current} (${reason}, mode=${mode})`)
       }
-
       return positionedNodes
     },
     [adaptedEdges, adaptedNodes],
@@ -291,8 +391,13 @@ function GraphViewport({
 
     const positionedNodes = runLayout(didModeChange ? 'mode-change' : 'load', layoutMode)
     const selectedNodes = applySelectedTxid(positionedNodes, selectedTxidRef.current)
-    setNodes(applyNodeVisualModes(selectedNodes, auditModeRef.current, colorByCategoryRef.current))
-    setEdges(adaptedEdges)
+    const visualNodes = applyNodeVisualModes(
+      selectedNodes,
+      auditModeRef.current,
+      colorByCategoryRef.current,
+    )
+    setNodes(visualNodes)
+    setEdges(applyEdgeVisualModes(adaptedEdges, visualNodes, colorByCategoryRef.current))
 
     if (didModeChange && positionedNodes.length > 0) {
       requestAnimationFrame(() => {
@@ -306,8 +411,14 @@ function GraphViewport({
   }, [selectedTxid, setNodes])
 
   useEffect(() => {
-    setNodes((currentNodes) => applyNodeVisualModes(currentNodes, auditMode, colorByCategory))
-  }, [auditMode, colorByCategory, setNodes])
+    setNodes((currentNodes) => {
+      const nextNodes = applyNodeVisualModes(currentNodes, auditMode, colorByCategory)
+      setEdges((currentEdges) =>
+        applyEdgeVisualModes(currentEdges as GraphFlowEdge[], nextNodes, colorByCategory),
+      )
+      return nextNodes
+    })
+  }, [auditMode, colorByCategory, setEdges, setNodes])
 
   const hasNodes = nodes.length > 0
 
@@ -316,13 +427,17 @@ function GraphViewport({
     void reactFlow.fitView({ padding: 0.2, duration: 250 })
   }, [hasNodes, reactFlow])
 
-
   const resetLayout = useCallback(() => {
     if (!hasNodes) return
     const positionedNodes = runLayout('reset', layoutModeRef.current)
     const selectedNodes = applySelectedTxid(positionedNodes, selectedTxidRef.current)
-    setNodes(applyNodeVisualModes(selectedNodes, auditModeRef.current, colorByCategoryRef.current))
-    setEdges(adaptedEdges)
+    const visualNodes = applyNodeVisualModes(
+      selectedNodes,
+      auditModeRef.current,
+      colorByCategoryRef.current,
+    )
+    setNodes(visualNodes)
+    setEdges(applyEdgeVisualModes(adaptedEdges, visualNodes, colorByCategoryRef.current))
 
     requestAnimationFrame(() => {
       void reactFlow.fitView({ padding: 0.2, duration: 250 })
@@ -374,9 +489,29 @@ function GraphViewport({
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
+      onEdgeClick={() => onSelectTxid(null)}
       onPaneClick={() => onSelectTxid(null)}
       nodeTypes={nodeTypes}
-    />
+      edgeTypes={edgeTypes}
+      defaultEdgeOptions={{ type: TRANSACTION_EDGE_TYPE }}
+      minZoom={0.1}
+      maxZoom={4}
+      fitView
+      nodesConnectable={false}
+      edgesUpdatable={false}
+      className="transaction-flow"
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#e2e8f0" />
+      <Controls />
+      <MiniMap
+        pannable
+        zoomable
+        className="transaction-flow__minimap"
+        nodeStrokeWidth={2}
+        nodeColor={(node) => resolveMiniMapNodeColor(node as Node<GraphFlowNodeData>, colorByCategory)}
+      />
+    </ReactFlow>
   )
 }
 
@@ -417,11 +552,13 @@ function GraphCanvas({
       window.clearTimeout(debounceTimer)
     }
   }, [depth])
+
   const { graph, loading, error, reload } = useGraph({
     rootTxid,
     depth: debouncedDepth,
     reloadKey,
   })
+
   const refreshGraph = useCallback(async () => {
     await reload({
       rootTxid,
@@ -429,24 +566,26 @@ function GraphCanvas({
       throwOnError: true,
     })
   }, [depth, reload, rootTxid])
+
   useEffect(() => {
     onRegisterRefresh?.(refreshGraph)
-
     return () => {
       onRegisterRefresh?.(null)
     }
   }, [onRegisterRefresh, refreshGraph])
+
   useEffect(() => {
     onGraphSummaryChange?.(graph?.summary ?? null)
   }, [graph, onGraphSummaryChange])
+
   useEffect(() => {
     onGraphDataChange?.(graph ?? null)
   }, [graph, onGraphDataChange])
+
   const { nodes: fullAdaptedNodes, edges: fullAdaptedEdges } = useMemo(() => {
     if (!graph) {
-      return { nodes: [], edges: [] }
+      return { nodes: [], edges: [] as GraphFlowEdge[] }
     }
-
     return adaptProvenanceGraphToReactFlow(graph)
   }, [graph])
 
@@ -454,6 +593,7 @@ function GraphCanvas({
     () => filterGraphByTransactionStatus(fullAdaptedNodes, fullAdaptedEdges, showTransactions),
     [fullAdaptedEdges, fullAdaptedNodes, showTransactions],
   )
+
   const { nodes: adaptedNodes, edges: adaptedEdges } = useMemo(
     () =>
       filterGraphBySelectionPathFocus(
@@ -471,6 +611,7 @@ function GraphCanvas({
       statusFilteredNodes,
     ],
   )
+
   const fullAdaptedNodeIds = useMemo(
     () => new Set(fullAdaptedNodes.map((node) => node.id)),
     [fullAdaptedNodes],
@@ -500,7 +641,7 @@ function GraphCanvas({
 
   return (
     <main className="graph-canvas surface-panel">
-      <div className="graph-canvas-inner">
+      <div className={`graph-canvas-inner${showRefreshingBanner ? ' graph-canvas-inner--refreshing' : ''}`}>
         <ReactFlowProvider>
           <GraphViewport
             adaptedNodes={adaptedNodes}
@@ -510,25 +651,27 @@ function GraphCanvas({
             onRegisterViewActions={onRegisterViewActions}
           />
         </ReactFlowProvider>
+
         {showRootPrompt && (
           <div className="graph-canvas__overlay">
-            <div className="graph-canvas__state-card surface-card state-tone state-tone--info state-surface">
-              <strong>No graph root selected</strong>
-              <span>Enter a txid in the top bar to load a provenance graph.</span>
+            <div className="graph-canvas__state-card graph-canvas__state-card--empty surface-card">
+              <DatabaseIcon />
+              <strong>Search for a transaction to begin</strong>
             </div>
           </div>
         )}
+
         {showLoadingOverlay && (
           <div className="graph-canvas__overlay">
             <div className="graph-canvas__state-card surface-card state-tone state-tone--loading state-surface">
               <div className="graph-canvas__state-row">
                 <span className="spinner" aria-hidden="true" />
-                <strong>Loading graph…</strong>
+                <strong>Loading transaction graph...</strong>
               </div>
-              <span>Fetching graph data from the backend command.</span>
             </div>
           </div>
         )}
+
         {showEmptyGraph && (
           <div className="graph-canvas__overlay">
             <div className="graph-canvas__state-card surface-card state-tone state-tone--empty state-surface">
@@ -537,6 +680,7 @@ function GraphCanvas({
             </div>
           </div>
         )}
+
         {showErrorOverlay && (
           <div className="graph-canvas__overlay">
             <div className="graph-canvas__state-card surface-card state-tone state-tone--error state-surface">
@@ -552,6 +696,7 @@ function GraphCanvas({
             </div>
           </div>
         )}
+
         {showErrorBanner && (
           <div className="graph-canvas__banner surface-card state-tone state-tone--error state-surface">
             <span>Graph refresh failed: {error}</span>
@@ -564,26 +709,13 @@ function GraphCanvas({
             </button>
           </div>
         )}
+
         {showRefreshingBanner && (
           <div className="graph-canvas__banner surface-card graph-canvas__banner--loading state-tone state-tone--loading state-surface">
             <span className="spinner spinner--sm" aria-hidden="true" />
-            <span>Refreshing graph…</span>
+            <span>Refreshing graph...</span>
           </div>
         )}
-        <div className="graph-state-debug">
-          {loading && 'Graph state: loading'}
-          {!loading && error && `Graph state: error — ${error}`}
-          {!loading &&
-            !error &&
-            graph &&
-            `Graph state: loaded (${adaptedNodes.length}/${fullAdaptedNodes.length} nodes, ${adaptedEdges.length}/${fullAdaptedEdges.length} edges)`}
-          {!loading &&
-            !error &&
-            !graph &&
-            (rootTxid
-              ? 'Graph state: idle'
-              : 'Graph state: idle — set VITE_PROVENANCE_GRAPH_ROOT_TXID')}
-        </div>
       </div>
     </main>
   )

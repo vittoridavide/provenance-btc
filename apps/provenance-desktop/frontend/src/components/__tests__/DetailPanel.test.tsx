@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { invoke } from '@tauri-apps/api/core'
-import { vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DetailPanel from '../DetailPanel'
 import { useTransactionDetail } from '../../hooks/useTransactionDetail'
 import type { TransactionDetail } from '../../types/api'
@@ -60,6 +60,9 @@ function mockDetail(detail: TransactionDetail) {
 beforeEach(() => {
   vi.clearAllMocks()
 })
+afterEach(() => {
+  cleanup()
+})
 
 describe('DetailPanel', () => {
   it('shows the unclassified warning when classification is missing', () => {
@@ -94,14 +97,12 @@ describe('DetailPanel', () => {
 
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
+    const saveButton = screen.getByRole('button', { name: 'Save Classification' })
 
-    await user.click(
-      screen.getByRole('button', { name: 'Save Classification' }),
-    )
+    expect(saveButton).toBeDisabled()
+    await user.click(saveButton)
 
-    expect(
-      await screen.findByText(/Select a primary classification before saving/i),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/Select a primary classification before saving/i)).not.toBeInTheDocument()
     expect(invoke).not.toHaveBeenCalled()
   })
 
