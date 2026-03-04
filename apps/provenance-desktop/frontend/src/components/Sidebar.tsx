@@ -1,9 +1,8 @@
-import { useSyncExternalStore } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import {
   getGraphControlsSnapshot,
   patchGraphUiControlState,
   subscribeGraphControls,
-  type GraphLayoutMode,
   type TransactionVisibilityFilter,
 } from '../state/graphControls'
 
@@ -20,60 +19,6 @@ function isTransactionVisibilityFilter(value: string): value is TransactionVisib
   return value === 'all' || value === 'confirmed' || value === 'mempool' || value === 'missing'
 }
 
-function isGraphLayoutMode(value: string): value is GraphLayoutMode {
-  return value === 'lr' || value === 'tb' || value === 'radial'
-}
-
-function Toggle({
-  checked,
-  onChange,
-  disabled = false,
-}: {
-  checked: boolean
-  onChange: (value: boolean) => void
-  disabled?: boolean
-}) {
-  return (
-    <label className="toggle">
-      <input
-        type="checkbox"
-        className="toggle__input"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span className="toggle__track">
-        <span className="toggle__thumb" />
-      </span>
-    </label>
-  )
-}
-
-function ShieldIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 1.5L2.5 4v3.75c0 3 2.5 5.5 5.5 6.5 3-1 5.5-3.5 5.5-6.5V4L8 1.5z"
-        fill="rgba(59,130,246,0.12)"
-        stroke="rgb(59,130,246)"
-        strokeWidth="1.25"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function PaletteIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="8" cy="8" r="5.5" stroke="rgb(147,51,234)" strokeWidth="1.25" fill="rgba(147,51,234,0.08)" />
-      <circle cx="5.75" cy="7" r="1.25" fill="rgb(239,68,68)" />
-      <circle cx="10.25" cy="7" r="1.25" fill="rgb(34,197,94)" />
-      <circle cx="8" cy="10.5" r="1.25" fill="rgb(59,130,246)" />
-    </svg>
-  )
-}
-
 function FilterIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
@@ -82,18 +27,75 @@ function FilterIcon() {
   )
 }
 
-function Sidebar({ collapsed = false, selectedTxid }: SidebarProps) {
-  const {
-    auditMode,
-    colorByCategory,
-    showTransactions,
-    depth,
-    showOnlyPathsToSelected,
-    hideUnrelatedBranches,
-    layoutMode,
-  } = useSyncExternalStore(subscribeGraphControls, getGraphControlsSnapshot, getGraphControlsSnapshot)
+function BookOpenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.25 3.5c0-.69.56-1.25 1.25-1.25H7a2.5 2.5 0 0 1 2 1 2.5 2.5 0 0 1 2-1h3.5c.69 0 1.25.56 1.25 1.25v8.75c0 .69-.56 1.25-1.25 1.25H11a2.5 2.5 0 0 0-2 1 2.5 2.5 0 0 0-2-1H3.5c-.69 0-1.25-.56-1.25-1.25V3.5z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path d="M8 3.25v10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  )
+}
 
-  const isPathFocusUnavailable = selectedTxid === null
+function CheckCircle2Icon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M5.2 8.1l1.8 1.8 3.8-3.8" />
+    </svg>
+  )
+}
+
+function CircleDotIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.75" />
+      <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function CircleIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.75" />
+    </svg>
+  )
+}
+
+function LegendRow({ marker, label }: { marker: ReactNode; label: string }) {
+  return (
+    <div className="sidebar__legend-row">
+      <span className="sidebar__legend-row-marker" aria-hidden="true">
+        {marker}
+      </span>
+      <span className="sidebar__legend-row-label">{label}</span>
+    </div>
+  )
+}
+
+const CLASSIFICATION_LEGEND_ITEMS = [
+  { label: 'Revenue', className: 'sidebar__legend-swatch--revenue' },
+  { label: 'Expense', className: 'sidebar__legend-swatch--expense' },
+  { label: 'Internal Transfer', className: 'sidebar__legend-swatch--internal-transfer' },
+  { label: 'Loan', className: 'sidebar__legend-swatch--loan' },
+  { label: 'Owner Contribution', className: 'sidebar__legend-swatch--owner-contribution' },
+  { label: 'Refund', className: 'sidebar__legend-swatch--refund' },
+  { label: 'Salary', className: 'sidebar__legend-swatch--salary' },
+  { label: 'Tax Payment', className: 'sidebar__legend-swatch--tax-payment' },
+  { label: 'Other', className: 'sidebar__legend-swatch--other' },
+] as const
+
+function Sidebar({ collapsed = false }: SidebarProps) {
+  const { depth, showTransactions, colorByCategory } = useSyncExternalStore(
+    subscribeGraphControls,
+    getGraphControlsSnapshot,
+    getGraphControlsSnapshot,
+  )
 
   if (collapsed) {
     return (
@@ -105,35 +107,27 @@ function Sidebar({ collapsed = false, selectedTxid }: SidebarProps) {
 
   return (
     <aside className="sidebar">
-      {/* Scrollable content */}
       <div className="sidebar__content">
-        {/* Audit Mode toggle row */}
-        <div className="sidebar__toggle-row sidebar__toggle-row--audit">
-          <span className="sidebar__toggle-row-icon">
-            <ShieldIcon />
-          </span>
-          <span className="sidebar__toggle-row-label">Audit Mode</span>
-          <Toggle
-            checked={auditMode}
-            onChange={(v) => patchGraphUiControlState({ auditMode: v })}
-          />
-        </div>
+        <section className="sidebar__section">
+          <h3 className="sidebar__section-header">Graph Controls</h3>
 
-        {/* Color by category toggle row */}
-        <div className="sidebar__toggle-row sidebar__toggle-row--palette">
-          <span className="sidebar__toggle-row-icon">
-            <PaletteIcon />
-          </span>
-          <span className="sidebar__toggle-row-label">Color by category</span>
-          <Toggle
-            checked={colorByCategory}
-            onChange={(v) => patchGraphUiControlState({ colorByCategory: v })}
-          />
-        </div>
+          <div className="sidebar__field">
+            <span className="sidebar__field-label">Depth: {depth}</span>
+            <input
+              className="sidebar__depth-range"
+              type="range"
+              min={1}
+              max={25}
+              value={depth}
+              onChange={(event) => {
+                patchGraphUiControlState({ depth: clampDepth(Number(event.target.value)) })
+              }}
+            />
+          </div>
+        </section>
 
         <div className="sidebar__divider" />
 
-        {/* Filters section */}
         <section className="sidebar__section">
           <h3 className="sidebar__section-header">
             <FilterIcon />
@@ -159,101 +153,113 @@ function Sidebar({ collapsed = false, selectedTxid }: SidebarProps) {
           </div>
         </section>
 
-        <div className="sidebar__divider" />
+        <div className="sidebar__legend-block">
+          <div className="sidebar__divider" />
 
-        {/* Graph Controls section */}
-        <section className="sidebar__section">
-          <h3 className="sidebar__section-header">Graph Controls</h3>
+          <section className="sidebar__section sidebar__section--legend">
+            <h3 className="sidebar__section-header">
+              <span className="sidebar__legend-header-icon">
+                <BookOpenIcon />
+              </span>
+              Legend
+            </h3>
 
-          <div className="sidebar__field">
-            <span className="sidebar__field-label">Depth: {depth}</span>
-            <input
-              className="sidebar__depth-range"
-              type="range"
-              min={1}
-              max={25}
-              value={depth}
-              onChange={(event) => {
-                patchGraphUiControlState({ depth: clampDepth(Number(event.target.value)) })
-              }}
-            />
-            <div className="sidebar__range-labels">
-              <span>1</span>
-              <span>25</span>
+            <div className="sidebar__legend">
+              <div className="sidebar__legend-group">
+                <p className="sidebar__legend-group-label">Node Status</p>
+                <div className="sidebar__legend-group-items">
+                  <LegendRow
+                    marker={<span className="sidebar__legend-swatch sidebar__legend-swatch--root" />}
+                    label="Root (query tx)"
+                  />
+                  <LegendRow
+                    marker={<span className="sidebar__legend-swatch sidebar__legend-swatch--confirmed" />}
+                    label="Confirmed"
+                  />
+                  <LegendRow
+                    marker={<span className="sidebar__legend-swatch sidebar__legend-swatch--mempool" />}
+                    label="Mempool"
+                  />
+                  <LegendRow
+                    marker={<span className="sidebar__legend-swatch sidebar__legend-swatch--missing" />}
+                    label="Missing parent"
+                  />
+                  <LegendRow
+                    marker={<span className="sidebar__legend-swatch sidebar__legend-swatch--external" />}
+                    label="External / unknown"
+                  />
+                </div>
+              </div>
+
+              <div className="sidebar__legend-group">
+                <p className="sidebar__legend-group-label">Labeling State</p>
+                <div className="sidebar__legend-group-items">
+                  <LegendRow
+                    marker={
+                      <span className="sidebar__legend-indicator sidebar__legend-indicator--fully-labeled">
+                        <CheckCircle2Icon />
+                      </span>
+                    }
+                    label="Fully labeled"
+                  />
+                  <LegendRow
+                    marker={
+                      <span className="sidebar__legend-indicator sidebar__legend-indicator--partially-labeled">
+                        <CircleDotIcon />
+                      </span>
+                    }
+                    label="Partially labeled"
+                  />
+                  <LegendRow
+                    marker={
+                      <span className="sidebar__legend-indicator sidebar__legend-indicator--unlabeled">
+                        <CircleIcon />
+                      </span>
+                    }
+                    label="Unlabeled"
+                  />
+                </div>
+              </div>
+
+              {colorByCategory && (
+                <div className="sidebar__legend-group">
+                  <p className="sidebar__legend-group-label">Classification</p>
+                  <div className="sidebar__legend-group-items">
+                    {CLASSIFICATION_LEGEND_ITEMS.map(({ label, className }) => (
+                      <LegendRow
+                        key={label}
+                        marker={
+                          <span
+                            className={`sidebar__legend-swatch sidebar__legend-swatch--classification ${className}`}
+                          />
+                        }
+                        label={label}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="sidebar__legend-group">
+                <p className="sidebar__legend-group-label">Edge Types</p>
+                <div className="sidebar__legend-group-items">
+                  <LegendRow
+                    marker={<span className="sidebar__legend-line sidebar__legend-line--default" />}
+                    label="Spend (default)"
+                  />
+                  <LegendRow
+                    marker={<span className="sidebar__legend-line sidebar__legend-line--selected" />}
+                    label="Selected / highlighted"
+                  />
+                  <LegendRow
+                    marker={<span className="sidebar__legend-line sidebar__legend-line--dashed" />}
+                    label="Dashed (future: missing)"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-
-          <div className={`sidebar__toggle-control${isPathFocusUnavailable ? ' sidebar__toggle-control--disabled' : ''}`}>
-            <span className="sidebar__toggle-control-label">Show only paths to selected</span>
-            <Toggle
-              checked={showOnlyPathsToSelected}
-              disabled={isPathFocusUnavailable}
-              onChange={(v) => patchGraphUiControlState({ showOnlyPathsToSelected: v })}
-            />
-          </div>
-
-          <div className={`sidebar__toggle-control${isPathFocusUnavailable ? ' sidebar__toggle-control--disabled' : ''}`}>
-            <span className="sidebar__toggle-control-label">Hide unrelated branches</span>
-            <Toggle
-              checked={hideUnrelatedBranches}
-              disabled={isPathFocusUnavailable}
-              onChange={(v) => patchGraphUiControlState({ hideUnrelatedBranches: v })}
-            />
-          </div>
-
-          {isPathFocusUnavailable && (
-            <p className="sidebar__helper-text">
-              Select a transaction in the graph to enable path-focus controls.
-            </p>
-          )}
-
-          <div className="sidebar__field">
-            <span className="sidebar__field-label">Layout mode</span>
-            <select
-              className="control-select"
-              value={layoutMode}
-              onChange={(event) => {
-                const nextValue = event.target.value
-                if (isGraphLayoutMode(nextValue)) {
-                  patchGraphUiControlState({ layoutMode: nextValue })
-                }
-              }}
-            >
-              <option value="lr">Left → Right</option>
-              <option value="tb">Top → Bottom</option>
-              <option value="radial">Radial</option>
-            </select>
-          </div>
-        </section>
-
-        <div className="sidebar__divider" />
-
-        {/* Legend section */}
-        <section className="sidebar__section">
-          <h3 className="sidebar__section-header">Legend</h3>
-          <ul className="sidebar__legend">
-            <li className="sidebar__legend-item">
-              <span className="sidebar__legend-icon sidebar__legend-icon--root" aria-hidden="true" />
-              <span>Root transaction</span>
-            </li>
-            <li className="sidebar__legend-item">
-              <span className="sidebar__legend-icon sidebar__legend-icon--confirmed" aria-hidden="true" />
-              <span>Confirmed</span>
-            </li>
-            <li className="sidebar__legend-item">
-              <span className="sidebar__legend-icon sidebar__legend-icon--mempool" aria-hidden="true" />
-              <span>Mempool</span>
-            </li>
-            <li className="sidebar__legend-item">
-              <span className="sidebar__legend-icon sidebar__legend-icon--missing" aria-hidden="true" />
-              <span>Missing parent</span>
-            </li>
-            <li className="sidebar__legend-item">
-              <span className="sidebar__legend-icon sidebar__legend-icon--external" aria-hidden="true" />
-              <span>External/unknown</span>
-            </li>
-          </ul>
-        </section>
+          </section>
+        </div>
       </div>
     </aside>
   )
