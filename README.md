@@ -1,4 +1,7 @@
 # Provenance
+<p align="center">
+  <img src="apps/provenance-desktop/frontend/src/assets/provenance.svg" alt="Provenance logo" width="220" />
+</p>
 
 > Local-first Bitcoin capital analysis for businesses.
 > Turn opaque UTXOs into structured, accountable financial assets.
