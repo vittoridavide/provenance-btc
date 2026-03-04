@@ -4,6 +4,7 @@ import {
   getGraphControlsSnapshot,
   subscribeGraphControls,
 } from '../state/graphControls'
+import provenanceLogo from '../assets/provenance.svg'
 
 const TXID_PATTERN = /^[0-9a-fA-F]{64}$/
 
@@ -85,7 +86,10 @@ function TopBar({
 
   return (
     <header className="top-bar">
-      <span className="top-bar__title">Provenance Graph</span>
+      <span className="top-bar__title">
+        <img src={provenanceLogo} alt="Provenance logo" className="top-bar__logo" />
+        <span>Provenance Graph</span>
+      </span>
       <form className="top-bar__search" onSubmit={handleSearchSubmit}>
         <div className="top-bar__search-wrapper">
           <span className="top-bar__search-icon">

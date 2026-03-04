@@ -197,14 +197,6 @@ function App() {
   const handleFitView = useCallback(() => {
     graphViewActionsRef.current?.fitView()
   }, [])
-  const handleFocusNode = useCallback((txid: string) => {
-    void txid
-    // Focus the viewport on the selected node — for now uses full-graph fit
-    graphViewActionsRef.current?.fitView()
-  }, [])
-  const handleResetToDefaultRoot = useCallback(() => {
-    handleSearchTxid(DEFAULT_ROOT_TXID)
-  }, [handleSearchTxid])
   const handleResetLayout = useCallback(() => {
     graphViewActionsRef.current?.resetLayout()
   }, [])
@@ -278,9 +270,7 @@ function App() {
               selectedTxid={selectedTxid}
               collapsed={detailCollapsed}
               onGraphRefresh={handleGraphRefresh}
-              onSetAsRoot={handleSearchTxid}
-              onResetRoot={handleResetToDefaultRoot}
-              onFocusNode={handleFocusNode}
+              onDeselect={() => setSelectedTxid(null)}
             />
           </div>
         </div>

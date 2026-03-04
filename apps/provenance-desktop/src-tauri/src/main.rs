@@ -81,6 +81,22 @@ async fn cmd_core_status(state: tauri::State<'_, AppState>) -> Result<CoreStatus
 }
 
 #[tauri::command]
+async fn cmd_delete_classification(
+    state: tauri::State<'_, AppState>,
+    ref_type: RefType,
+    ref_id: String,
+) -> Result<bool, String> {
+    let db_path = (*state.db_path).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = open_db(&db_path)?;
+        classifications::delete_classification(db.conn(), ref_type.as_str(), &ref_id)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn cmd_fetch_tx(state: tauri::State<'_, AppState>, txid: String) -> Result<TxView, String> {
     let cfg = get_rpc_config(&state)?;
 
@@ -578,6 +594,7 @@ fn main() {
             cmd_set_label,
             cmd_delete_label,
             cmd_set_classification,
+            cmd_delete_classification,
             cmd_export_labels,
             cmd_import_labels,
             cmd_export_graph_json

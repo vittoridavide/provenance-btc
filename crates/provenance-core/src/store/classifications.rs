@@ -94,6 +94,15 @@ pub fn get_classifications_by_type(
     Ok(out)
 }
 
+/// Delete a classification. Returns `true` if a row was actually removed.
+pub fn delete_classification(conn: &Connection, ref_type: &str, ref_id: &str) -> Result<bool> {
+    let changed = conn.execute(
+        "DELETE FROM classifications WHERE ref_type = ?1 AND ref_id = ?2",
+        params![ref_type, ref_id],
+    )?;
+    Ok(changed > 0)
+}
+
 /// Fetch all classifications (all types).
 pub fn get_all_classifications(conn: &Connection) -> Result<Vec<StoredClassification>> {
     let mut stmt = conn.prepare(
@@ -138,7 +147,9 @@ mod tests {
 
     use crate::store::db::Database;
 
-    use super::{get_all_classifications, get_classification, set_classification};
+    use super::{
+        delete_classification, get_all_classifications, get_classification, set_classification,
+    };
 
     const TXID_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const TXID_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -241,5 +252,29 @@ mod tests {
                 ("tx".to_owned(), TXID_B.to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn delete_classification_removes_existing_row() {
+        let db = Database::open(":memory:").expect("db opens");
+        let conn = db.conn();
+
+        set_classification(conn, "tx", TXID_A, "Revenue", None, &json!({}), false)
+            .expect("insert tx a");
+
+        let deleted = delete_classification(conn, "tx", TXID_A).expect("delete works");
+        assert!(deleted);
+
+        let after = get_classification(conn, "tx", TXID_A).expect("query works");
+        assert!(after.is_none());
+    }
+
+    #[test]
+    fn delete_classification_returns_false_when_missing() {
+        let db = Database::open(":memory:").expect("db opens");
+        let conn = db.conn();
+
+        let deleted = delete_classification(conn, "tx", TXID_A).expect("delete works");
+        assert!(!deleted);
     }
 }
