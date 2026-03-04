@@ -33,7 +33,7 @@ const baseDetail: TransactionDetail = {
       vout: 0,
       value_sat: 150_000,
       script_pubkey_hex: '',
-      script_type: null,
+      script_type: 'p2wpkh',
       address: null,
       label: null,
       classification: null,
@@ -42,7 +42,7 @@ const baseDetail: TransactionDetail = {
       vout: 1,
       value_sat: 350_000,
       script_pubkey_hex: '',
-      script_type: null,
+      script_type: 'p2tr',
       address: null,
       label: 'old output note',
       classification: {
@@ -103,6 +103,7 @@ describe('DetailPanel', () => {
     expect(screen.getByText('Transaction Details')).toBeInTheDocument()
     expect(screen.getByText('Classify and add accounting metadata')).toBeInTheDocument()
     expect(screen.getByText('Output Classification')).toBeInTheDocument()
+    expect(screen.getByText('P2WPKH')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save Classification' })).toBeInTheDocument()
   })
 
@@ -180,11 +181,40 @@ describe('DetailPanel', () => {
     )
   })
 
-  it('clears tx and output labels/classifications when confirmed', async () => {
+  it('clears unsaved output drafts when no persisted records exist', async () => {
+    const detail = makeDetail({
+      classification: null,
+      label: null,
+      outputs: baseDetail.outputs.map((output) => ({
+        ...output,
+        classification: null,
+        label: null,
+      })),
+    })
+    const { reload } = mockDetail(detail)
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    render(<DetailPanel selectedTxid={detail.txid} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'Show Outputs' }))
+    const outputNotesInputs = screen.getAllByPlaceholderText('Output-specific notes...')
+    await user.type(outputNotesInputs[0], 'draft output note')
+    await user.click(screen.getByRole('button', { name: 'Clear Classification' }))
+    await waitFor(() => expect((outputNotesInputs[0] as HTMLInputElement).value).toBe(''))
+
+    await waitFor(() =>
+      expect(reload).toHaveBeenCalledWith({
+        txid: detail.txid,
+        throwOnError: true,
+      }),
+    )
+  })
+
+  it('clears tx and output labels/classifications', async () => {
     const detail = makeDetail()
     const { reload } = mockDetail(detail)
     vi.mocked(invoke).mockResolvedValue(undefined)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
@@ -203,6 +233,50 @@ describe('DetailPanel', () => {
             'cmd_delete_label',
             expect.objectContaining({ refType: 'tx', refId: detail.txid }),
           ],
+          [
+            'cmd_delete_classification',
+            expect.objectContaining({ refType: 'output', refId: `${detail.txid}:1` }),
+          ],
+          [
+            'cmd_delete_label',
+            expect.objectContaining({ refType: 'output', refId: `${detail.txid}:1` }),
+          ],
+        ]),
+      )
+    })
+
+    await waitFor(() =>
+      expect(reload).toHaveBeenCalledWith({
+        txid: detail.txid,
+        throwOnError: true,
+      }),
+    )
+  })
+
+  it('clears output data even when transaction classification is missing', async () => {
+    const detail = makeDetail({
+      classification: null,
+      label: null,
+    })
+    const { reload } = mockDetail(detail)
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    render(<DetailPanel selectedTxid={detail.txid} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'Clear Classification' }))
+
+    await waitFor(() => {
+      const calls = vi.mocked(invoke).mock.calls
+      const txDeleteClassificationCalls = calls.filter(
+        ([command, payload]) =>
+          command === 'cmd_delete_classification' &&
+          (payload as { refType?: string }).refType === 'tx',
+      )
+
+      expect(txDeleteClassificationCalls).toHaveLength(0)
+      expect(calls).toEqual(
+        expect.arrayContaining([
           [
             'cmd_delete_classification',
             expect.objectContaining({ refType: 'output', refId: `${detail.txid}:1` }),

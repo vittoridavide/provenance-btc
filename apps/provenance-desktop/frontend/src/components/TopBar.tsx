@@ -88,7 +88,7 @@ function TopBar({
     <header className="top-bar">
       <span className="top-bar__title">
         <img src={provenanceLogo} alt="Provenance logo" className="top-bar__logo" />
-        <span>Provenance Graph</span>
+        <span>Provenance</span>
       </span>
       <form className="top-bar__search" onSubmit={handleSearchSubmit}>
         <div className="top-bar__search-wrapper">

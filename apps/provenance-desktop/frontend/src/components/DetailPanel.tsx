@@ -40,6 +40,7 @@ type OutputDraft = {
 
 const UNKNOWN_VALUE = 'N/A'
 const INLINE_TOAST_TIMEOUT_MS = 3000
+const INFO_PLACEHOLDER = '—'
 
 const CLASSIFICATION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'revenue', label: 'Revenue' },
@@ -114,6 +115,13 @@ function formatAuditDate(value: unknown): string {
   }
 
   return UNKNOWN_VALUE
+}
+
+function formatBlockTime(value: number | null | undefined): string {
+  if (value == null) return INFO_PLACEHOLDER
+  const date = new Date(value * 1000)
+  if (!Number.isFinite(date.getTime())) return INFO_PLACEHOLDER
+  return date.toLocaleString()
 }
 
 function statusBadgeLabel(status: DetailStatus, confirmations: number | null | undefined): string {
@@ -311,6 +319,7 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
   const [glCategory, setGlCategory] = useState('')
   const [notes, setNotes] = useState('')
   const [outputDrafts, setOutputDrafts] = useState<Record<number, OutputDraft>>({})
+  const [accountingMetadataExpanded, setAccountingMetadataExpanded] = useState(false)
   const [outputsExpanded, setOutputsExpanded] = useState(false)
 
   const [isSaving, setIsSaving] = useState(false)
@@ -337,6 +346,7 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
       setGlCategory('')
       setNotes('')
       setOutputDrafts({})
+      setAccountingMetadataExpanded(false)
       setOutputsExpanded(false)
       setFormError(null)
       setClassificationMissing(false)
@@ -356,6 +366,7 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
     setGlCategory(readMetadataString(metadata, 'gl_category'))
     setNotes(readMetadataString(metadata, 'notes') || loadedDetail.classification?.context || '')
     setOutputDrafts(createOutputDraftMap(loadedDetail))
+    setAccountingMetadataExpanded(false)
     setFormError(null)
     setClassificationMissing(false)
     setToast(null)
@@ -367,9 +378,31 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
     return () => window.clearTimeout(timeoutId)
   }, [toast])
 
-  const hasClassification =
+  const hasTxClassification = loadedDetail?.classification != null
+  const hasTxLabel = (loadedDetail?.label ?? '').trim().length > 0
+  const hasOutputClassification =
+    loadedDetail?.outputs.some((output) => output.classification != null) ?? false
+  const hasOutputLabel =
+    loadedDetail?.outputs.some((output) => (output.label ?? '').trim().length > 0) ?? false
+  const hasClearableData =
+    hasTxClassification || hasTxLabel || hasOutputClassification || hasOutputLabel
+  const hasDraftTxMetadata =
     classificationCategory.trim().length > 0 ||
-    (loadedDetail?.classification?.category?.trim().length ?? 0) > 0
+    classificationTaxRelevant ||
+    counterparty.trim().length > 0 ||
+    invoiceReferenceId.trim().length > 0 ||
+    glCategory.trim().length > 0 ||
+    notes.trim().length > 0
+  const hasDraftOutputMetadata =
+    loadedDetail?.outputs.some((output) => {
+      const draft = outputDrafts[output.vout] ?? initialOutputDraft(output)
+      return (
+        draft.classification.trim().length > 0 ||
+        draft.internalChange ||
+        draft.notes.trim().length > 0
+      )
+    }) ?? false
+  const canClearClassification = hasClearableData || hasDraftTxMetadata || hasDraftOutputMetadata
 
   const displayTxid = toDisplayTxid(loadedDetail?.txid ?? activeTxid)
   const hasCopyableTxid = displayTxid !== UNKNOWN_VALUE
@@ -616,7 +649,7 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
   const handleClearClassification = useCallback(async () => {
     if (
       !loadedDetail ||
-      !hasClassification ||
+      !canClearClassification ||
       isSaving ||
       isClearing ||
       isSyncingPrimaryClassification
@@ -624,24 +657,20 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
       return
     }
 
-    const confirmed = window.confirm(
-      'Are you sure you want to clear this classification?',
-    )
-    if (!confirmed) return
-
     setFormError(null)
     setToast(null)
     setIsClearing(true)
 
     try {
       const mutations: Promise<unknown>[] = []
-
-      mutations.push(
-        invoke('cmd_delete_classification', {
-          refType: 'tx' as RefType,
-          refId: loadedDetail.txid,
-        }),
-      )
+      if (loadedDetail.classification) {
+        mutations.push(
+          invoke('cmd_delete_classification', {
+            refType: 'tx' as RefType,
+            refId: loadedDetail.txid,
+          }),
+        )
+      }
 
       if ((loadedDetail.label ?? '').trim().length > 0) {
         mutations.push(
@@ -655,7 +684,7 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
       for (const output of loadedDetail.outputs) {
         const refId = `${loadedDetail.txid}:${output.vout}`
 
-        if ((output.classification?.category?.trim().length ?? 0) > 0) {
+        if (output.classification) {
           mutations.push(
             invoke('cmd_delete_classification', {
               refType: 'output' as RefType,
@@ -674,7 +703,29 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
         }
       }
 
-      await Promise.all(mutations)
+      if (mutations.length > 0) {
+        await Promise.all(mutations)
+      }
+
+      setClassificationCategory('')
+      setClassificationTaxRelevant(false)
+      setCounterparty('')
+      setInvoiceReferenceId('')
+      setGlCategory('')
+      setNotes('')
+      setOutputDrafts(
+        Object.fromEntries(
+          loadedDetail.outputs.map((output) => [
+            output.vout,
+            {
+              classification: '',
+              internalChange: false,
+              notes: '',
+            },
+          ]),
+        ),
+      )
+      setClassificationMissing(false)
       await refreshAfterMutation()
       setToast({
         tone: 'success',
@@ -690,7 +741,7 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
       setIsClearing(false)
     }
   }, [
-    hasClassification,
+    canClearClassification,
     isClearing,
     isSaving,
     isSyncingPrimaryClassification,
@@ -813,7 +864,6 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
           </div>
         </header>
 
-        <div className="detail-panel__separator" />
 
         {state === 'loading' && (
           <section className="detail-panel__section">
@@ -829,6 +879,35 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
 
         {state === 'loaded' && loadedDetail && (
           <>
+            <section className="detail-panel__section detail-panel__section--transaction-info">
+              <h3 className="detail-panel__section-title">Transaction Info</h3>
+              <div className="detail-panel__audit-card">
+                <div className="detail-panel__audit-row">
+                  <span>Block Height:</span>
+                  <span className="detail-panel__audit-value">
+                    {loadedDetail.block_height ?? INFO_PLACEHOLDER}
+                  </span>
+                </div>
+                <div className="detail-panel__audit-row">
+                  <span>Time:</span>
+                  <span>{formatBlockTime(loadedDetail.block_time)}</span>
+                </div>
+                <div className="detail-panel__audit-row">
+                  <span>vsize:</span>
+                  <span className="detail-panel__audit-value">{loadedDetail.vsize} vB</span>
+                </div>
+                <div className="detail-panel__audit-row">
+                  <span>Weight:</span>
+                  <span className="detail-panel__audit-value">{loadedDetail.weight} WU</span>
+                </div>
+                <div className="detail-panel__audit-row">
+                  <span>Version:</span>
+                  <span className="detail-panel__audit-value">{loadedDetail.version}</span>
+                </div>
+              </div>
+            </section>
+
+            <div className="detail-panel__separator" />
             <section className="detail-panel__section">
               <label className="detail-panel__field" htmlFor={classificationId}>
                 <span className="detail-panel__field-label">
@@ -856,94 +935,104 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
                 </select>
               </label>
 
-              <div className="detail-panel__tax-card">
-                <label className="detail-panel__tax-label" htmlFor={taxRelevantId}>
-                  <AlertCircleIcon />
-                  <span>Tax relevant transaction</span>
-                </label>
-                <button
-                  id={taxRelevantId}
-                  type="button"
-                  role="switch"
-                  aria-checked={classificationTaxRelevant}
-                  className={`detail-panel__switch${classificationTaxRelevant ? ' detail-panel__switch--on detail-panel__switch--tax' : ''}`}
-                  onClick={() => {
-                    setClassificationTaxRelevant((current) => !current)
-                    if (formError) setFormError(null)
-                  }}
-                >
-                  <span className="detail-panel__switch-thumb" />
-                </button>
-              </div>
-            </section>
+              <button
+                type="button"
+                className="detail-panel__expand-button"
+                aria-expanded={accountingMetadataExpanded}
+                onClick={() => setAccountingMetadataExpanded((current) => !current)}
+              >
+                {accountingMetadataExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                <span>Accounting Metadata</span>
+              </button>
 
-            <div className="detail-panel__separator" />
+              {accountingMetadataExpanded && (
+                <div className="detail-panel__metadata-fields">
+                  <div className="detail-panel__tax-card">
+                    <label className="detail-panel__tax-label" htmlFor={taxRelevantId}>
+                      <AlertCircleIcon />
+                      <span>Tax relevant information</span>
+                    </label>
+                    <button
+                      id={taxRelevantId}
+                      type="button"
+                      role="switch"
+                      aria-checked={classificationTaxRelevant}
+                      className={`detail-panel__switch${classificationTaxRelevant ? ' detail-panel__switch--on detail-panel__switch--tax' : ''}`}
+                      onClick={() => {
+                        setClassificationTaxRelevant((current) => !current)
+                        if (formError) setFormError(null)
+                      }}
+                    >
+                      <span className="detail-panel__switch-thumb" />
+                    </button>
+                  </div>
 
-            <section className="detail-panel__section">
-              <label className="detail-panel__field" htmlFor={counterpartyId}>
-                <span className="detail-panel__field-label">Counterparty</span>
-                <input
-                  id={counterpartyId}
-                  className="detail-panel__input"
-                  value={counterparty}
-                  placeholder="e.g., Acme Corp, Client Name"
-                  onChange={(event) => {
-                    setCounterparty(event.target.value)
-                    if (formError) setFormError(null)
-                  }}
-                />
-                <span className="detail-panel__helper">
-                  Entity or person involved in this transaction
-                </span>
-              </label>
+                  <label className="detail-panel__field" htmlFor={counterpartyId}>
+                    <span className="detail-panel__field-label">Counterparty</span>
+                    <input
+                      id={counterpartyId}
+                      className="detail-panel__input"
+                      value={counterparty}
+                      placeholder="e.g., Acme Corp, Client Name"
+                      onChange={(event) => {
+                        setCounterparty(event.target.value)
+                        if (formError) setFormError(null)
+                      }}
+                    />
+                    <span className="detail-panel__helper">
+                      Entity or person involved in this transaction
+                    </span>
+                  </label>
 
-              <label className="detail-panel__field" htmlFor={invoiceId}>
-                <span className="detail-panel__field-label">Invoice/Reference ID</span>
-                <input
-                  id={invoiceId}
-                  className="detail-panel__input"
-                  value={invoiceReferenceId}
-                  placeholder="INV-2024-001"
-                  onChange={(event) => {
-                    setInvoiceReferenceId(event.target.value)
-                    if (formError) setFormError(null)
-                  }}
-                />
-                <span className="detail-panel__helper">
-                  Optional reference for your accounting system
-                </span>
-              </label>
+                  <label className="detail-panel__field" htmlFor={invoiceId}>
+                    <span className="detail-panel__field-label">Ref ID</span>
+                    <input
+                      id={invoiceId}
+                      className="detail-panel__input"
+                      value={invoiceReferenceId}
+                      placeholder="INV-2024-001"
+                      onChange={(event) => {
+                        setInvoiceReferenceId(event.target.value)
+                        if (formError) setFormError(null)
+                      }}
+                    />
+                    <span className="detail-panel__helper">
+                      Optional reference for your accounting system
+                    </span>
+                  </label>
 
-              <label className="detail-panel__field" htmlFor={glCategoryId}>
-                <span className="detail-panel__field-label">GL Category</span>
-                <input
-                  id={glCategoryId}
-                  className="detail-panel__input"
-                  value={glCategory}
-                  placeholder="e.g., 4000, Sales:Product, COGS"
-                  onChange={(event) => {
-                    setGlCategory(event.target.value)
-                    if (formError) setFormError(null)
-                  }}
-                />
-                <span className="detail-panel__helper">General ledger account code or category</span>
-              </label>
+                  <label className="detail-panel__field" htmlFor={glCategoryId}>
+                    <span className="detail-panel__field-label">GL Category</span>
+                    <input
+                      id={glCategoryId}
+                      className="detail-panel__input"
+                      value={glCategory}
+                      placeholder="e.g., 4000, Sales:Product, COGS"
+                      onChange={(event) => {
+                        setGlCategory(event.target.value)
+                        if (formError) setFormError(null)
+                      }}
+                    />
+                    <span className="detail-panel__helper">General ledger account code or category</span>
+                  </label>
 
-              <label className="detail-panel__field" htmlFor={notesId}>
-                <span className="detail-panel__field-label">Notes</span>
-                <textarea
-                  id={notesId}
-                  className="detail-panel__textarea"
-                  rows={3}
-                  value={notes}
-                  placeholder="Add internal notes or context..."
-                  onChange={(event) => {
-                    setNotes(event.target.value)
-                    if (formError) setFormError(null)
-                  }}
-                />
-                <span className="detail-panel__helper">Internal notes for your records (not exported)</span>
-              </label>
+                  <label className="detail-panel__field" htmlFor={notesId}>
+                    <span className="detail-panel__field-label">Notes</span>
+                    <textarea
+                      id={notesId}
+                      className="detail-panel__textarea"
+                      rows={3}
+                      value={notes}
+                      placeholder="Add internal notes or context..."
+                      onChange={(event) => {
+                        setNotes(event.target.value)
+                        if (formError) setFormError(null)
+                      }}
+                    />
+                    <span className="detail-panel__helper">Internal notes for your records (not exported)</span>
+                  </label>
+                </div>
+              )}
             </section>
 
             <div className="detail-panel__separator" />
@@ -988,7 +1077,14 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
                     return (
                       <article key={output.vout} className="detail-panel__output-card">
                         <div className="detail-panel__output-header">
-                          <span className="detail-panel__output-title">Output {output.vout}</span>
+                          <div className="detail-panel__output-heading">
+                            <span className="detail-panel__output-title">Output {output.vout}</span>
+                            {output.script_type && (
+                              <span className="detail-panel__output-class-badge">
+                                {output.script_type.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
                           <span className="detail-panel__output-value">{formatBtc(output.value_sat)}</span>
                         </div>
 
@@ -1080,59 +1176,60 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
           </>
         )}
 
-        <footer className="detail-panel__footer">
-          {formError && <p className="detail-panel__error-text">{formError}</p>}
+      </div>
 
-          {toast && (
-            <div className={toastClass} role="status" aria-live="polite">
-              <span>{toast.title}</span>
-              {toast.description && <small>{toast.description}</small>}
-            </div>
-          )}
+      <footer className="detail-panel__footer">
+        {formError && <p className="detail-panel__error-text">{formError}</p>}
 
-          <div className="detail-panel__footer-actions">
+        {toast && (
+          <div className={toastClass} role="status" aria-live="polite">
+            <span>{toast.title}</span>
+            {toast.description && <small>{toast.description}</small>}
+          </div>
+        )}
+
+        <div className="detail-panel__footer-actions">
+          <button
+            type="button"
+            className="detail-panel__save-button"
+            disabled={isSaving || isClearing || isSyncingPrimaryClassification}
+            onClick={() => void handleSaveClassification()}
+          >
+            {isSaving || isSyncingPrimaryClassification ? (
+              <>
+                <span className="spinner spinner--sm" aria-hidden="true" />
+                <span>{isSaving ? 'Saving…' : 'Updating…'}</span>
+              </>
+            ) : (
+              <>
+                <SaveIcon />
+                <span>Save Classification</span>
+              </>
+            )}
+          </button>
+
+          {canClearClassification && (
             <button
               type="button"
-              className="detail-panel__save-button"
+              className="detail-panel__clear-button"
               disabled={isSaving || isClearing || isSyncingPrimaryClassification}
-              onClick={() => void handleSaveClassification()}
+              onClick={() => void handleClearClassification()}
             >
-              {isSaving || isSyncingPrimaryClassification ? (
+              {isClearing ? (
                 <>
                   <span className="spinner spinner--sm" aria-hidden="true" />
-                  <span>{isSaving ? 'Saving…' : 'Updating…'}</span>
+                  <span>Clearing…</span>
                 </>
               ) : (
                 <>
-                  <SaveIcon />
-                  <span>Save Classification</span>
+                  <XIcon />
+                  <span>Clear Classification</span>
                 </>
               )}
             </button>
-
-            {hasClassification && (
-              <button
-                type="button"
-                className="detail-panel__clear-button"
-                disabled={isSaving || isClearing || isSyncingPrimaryClassification}
-                onClick={() => void handleClearClassification()}
-              >
-                {isClearing ? (
-                  <>
-                    <span className="spinner spinner--sm" aria-hidden="true" />
-                    <span>Clearing…</span>
-                  </>
-                ) : (
-                  <>
-                    <XIcon />
-                    <span>Clear Classification</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        </footer>
-      </div>
+          )}
+        </div>
+      </footer>
     </aside>
   )
 }
