@@ -1,10 +1,15 @@
-# Provenance
 <p align="center">
-  <img src="apps/provenance-desktop/frontend/src/assets/provenance.svg" alt="Provenance logo" width="220" />
+  <img src="apps/provenance-desktop/frontend/src/assets/provenance.svg" alt="Provenance logo" width="160" />
 </p>
 
-> Local-first Bitcoin capital analysis for businesses.
-> Turn opaque UTXOs into structured, accountable financial assets.
+<h1 align="center">Provenance</h1>
+
+<p align="center">
+  Local-first Bitcoin capital analysis for businesses.<br/>
+  Turn opaque UTXOs into structured, accountable financial assets.
+</p>
+
+---
 
 Provenance is an open-source desktop application built with **Rust + Tauri** that allows business owners to reconstruct coin history, label transactions and UTXOs, and generate audit-ready provenance reports — without leaking data to third parties.
 
