@@ -121,6 +121,32 @@ function statusLabel(status: GraphFlowNodeData['status']): string {
   return 'Missing'
 }
 
+const SATS_PER_BTC = 100_000_000
+const SATS_PER_MICRO_BTC = 100
+const BTC_DISPLAY_THRESHOLD_SAT = 1_000_000
+
+function isValidMetric(value: number | null): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function formatInteger(value: number): string {
+  return Math.round(value).toLocaleString()
+}
+
+function formatFeeValue(feeSat: number): string {
+  if (feeSat >= BTC_DISPLAY_THRESHOLD_SAT) {
+    const feeBtc = feeSat / SATS_PER_BTC
+    return `${feeBtc.toLocaleString(undefined, { maximumFractionDigits: 8 })} BTC`
+  }
+
+  if (feeSat >= SATS_PER_MICRO_BTC && feeSat < 1_000 && feeSat % SATS_PER_MICRO_BTC === 0) {
+    const feeMicroBtc = feeSat / SATS_PER_MICRO_BTC
+    return `${feeMicroBtc.toLocaleString()} μBTC`
+  }
+
+  return `${feeSat.toLocaleString()} sats`
+}
+
 function labelingIndicator(labelingState: GraphFlowNodeData['labeling_state']) {
   if (labelingState === 'fully-labeled') {
     return <CheckCircleIcon />
@@ -158,7 +184,11 @@ function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
   const nodeStatusLabel = statusLabel(data.status)
   const labelingIcon = useMemo(() => labelingIndicator(data.labeling_state), [data.labeling_state])
   const displayConfirmations = data.status === 'confirmed' && data.confirmations !== null
-  const displayMetrics = data.status !== 'missing' && (data.vsize !== null || data.fee_sat !== null)
+  const hasVsizeMetric = isValidMetric(data.vsize)
+  const hasFeeMetric = isValidMetric(data.fee_sat) && data.fee_sat >= 0
+  const displayMetrics = data.status !== 'missing' && hasVsizeMetric && hasFeeMetric
+  const formattedVsize = hasVsizeMetric ? formatInteger(data.vsize!) : ''
+  const formattedFee = hasFeeMetric ? formatFeeValue(data.fee_sat!) : ''
   const displayOutputClassification = data.labeled_output_count > 0 && data.total_output_count > 0
 
   return (
@@ -231,18 +261,14 @@ function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
 
         {displayMetrics && (
           <div className="transaction-node-card__metrics">
-            {data.vsize !== null && (
-              <span>
-                <span className="transaction-node-card__metric-label">vsize:</span>{' '}
-                <span className="transaction-node-card__metric-value">{data.vsize}</span>
-              </span>
-            )}
-            {data.fee_sat !== null && (
-              <span>
-                <span className="transaction-node-card__metric-label">fee:</span>{' '}
-                <span className="transaction-node-card__metric-value">{data.fee_sat} sat</span>
-              </span>
-            )}
+            <span className="transaction-node-card__metric" title={`vsize: ${formattedVsize}`}>
+              <span className="transaction-node-card__metric-label">vsize:</span>
+              <span className="transaction-node-card__metric-value">{formattedVsize}</span>
+            </span>
+            <span className="transaction-node-card__metric" title={`fee: ${formattedFee}`}>
+              <span className="transaction-node-card__metric-label">fee:</span>
+              <span className="transaction-node-card__metric-value">{formattedFee}</span>
+            </span>
           </div>
         )}
 

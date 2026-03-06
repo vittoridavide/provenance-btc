@@ -100,7 +100,8 @@ body {
 
 .workspace-row {
   --panel-collapsed-width: 52px;
-  --detail-width: 420px;
+  --detail-width-open: 420px;
+  --detail-width: var(--detail-width-open);
   --graph-min-width: 480px;
   height: 100%;
   min-height: 100%;
@@ -112,7 +113,7 @@ body {
 }
 
 .workspace-row--compact {
-  --detail-width: 300px;
+  --detail-width-open: 300px;
   --graph-min-width: 420px;
 }
 
@@ -156,7 +157,7 @@ body {
 
 @media (max-width: 1100px) {
   .workspace-row {
-    --detail-width: 280px;
+    --detail-width-open: 280px;
     --graph-min-width: 420px;
   }
 }

@@ -50,6 +50,8 @@ pub struct GraphNode {
     pub confirmations: Option<u32>,
     pub height: Option<u32>,
     pub time: Option<u64>,
+    pub vsize: Option<u64>,
+    pub fee_sat: Option<u64>,
     pub is_root: bool,
     pub label: Option<String>,
     pub classification_category: Option<String>,

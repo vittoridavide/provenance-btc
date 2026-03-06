@@ -25,6 +25,8 @@ export interface GraphNode {
   confirmations: number | null
   height: number | null
   time: number | null
+  vsize: number | null
+  fee_sat: number | null
   is_root: boolean
   label: string | null
   classification_category: string | null

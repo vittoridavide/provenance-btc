@@ -31,28 +31,17 @@ type TopBarTestPropsOverrides = Partial<ComponentProps<typeof TopBar>>
 
 function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
   const onSearchTxid = vi.fn()
-  const onFitView = vi.fn()
-  const onResetLayout = vi.fn()
   const onExportGraphJson = vi.fn()
   const onExportLabels = vi.fn()
   const onImportLabels = vi.fn().mockResolvedValue(undefined)
-  const onToggleSidebar = vi.fn()
-  const onToggleDetail = vi.fn()
 
   const result = render(
     <TopBar
       rootTxid={VALID_TXID}
       onSearchTxid={onSearchTxid}
-      onFitView={onFitView}
-      onResetLayout={onResetLayout}
       onExportGraphJson={onExportGraphJson}
       onExportLabels={onExportLabels}
       onImportLabels={onImportLabels}
-      showPanelToggles={true}
-      sidebarCollapsed={false}
-      detailCollapsed={false}
-      onToggleSidebar={onToggleSidebar}
-      onToggleDetail={onToggleDetail}
       {...overrides}
     />,
   )
@@ -60,8 +49,6 @@ function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
   return {
     ...result,
     onSearchTxid,
-    onFitView,
-    onResetLayout,
     onExportGraphJson,
     onExportLabels,
     onImportLabels,
@@ -78,12 +65,9 @@ afterEach(() => {
 
 describe('TopBar', () => {
   it('wires top-bar action buttons to explicit callbacks', async () => {
-    const { container, onFitView, onResetLayout, onExportGraphJson, onExportLabels, onImportLabels } =
-      renderTopBar()
+    const { container, onExportGraphJson, onExportLabels, onImportLabels } = renderTopBar()
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('button', { name: 'Fit to view' }))
-    await user.click(screen.getByRole('button', { name: 'Reset layout' }))
     await user.click(screen.getByRole('button', { name: 'Export graph JSON' }))
     await user.click(screen.getByRole('button', { name: 'Export labels' }))
 
@@ -91,8 +75,6 @@ describe('TopBar', () => {
     expect(fileInput).toBeInstanceOf(HTMLInputElement)
     await user.upload(fileInput as HTMLInputElement, new File(['{}'], 'labels.jsonl'))
 
-    expect(onFitView).toHaveBeenCalledTimes(1)
-    expect(onResetLayout).toHaveBeenCalledTimes(1)
     expect(onExportGraphJson).toHaveBeenCalledTimes(1)
     expect(onExportLabels).toHaveBeenCalledTimes(1)
     expect(onImportLabels).toHaveBeenCalledTimes(1)
@@ -107,8 +89,6 @@ describe('TopBar', () => {
 
     renderTopBar()
 
-    expect(screen.getByRole('button', { name: 'Fit to view' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Reset layout' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Export graph JSON' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Export labels' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Import labels' })).toBeDisabled()

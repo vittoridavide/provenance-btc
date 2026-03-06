@@ -20,6 +20,7 @@ type DetailPanelProps = {
   collapsed?: boolean
   onGraphRefresh?: () => Promise<void>
   onDeselect?: () => void
+  onToggle?: () => void
 }
 
 type DetailPanelState = 'loading' | 'load-error' | 'loaded'
@@ -286,7 +287,21 @@ function createOutputDraftMap(detail: TransactionDetail): Record<number, OutputD
   return Object.fromEntries(entries)
 }
 
-function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDeselect }: DetailPanelProps) {
+function CollapseDetailIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M5 3l4 4-4 4"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDeselect, onToggle }: DetailPanelProps) {
   const auditMode = useSyncExternalStore(
     subscribeGraphControls,
     getAuditModeSnapshot,
@@ -808,7 +823,14 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
 
   if (collapsed) {
     return (
-      <aside className="detail-panel detail-panel--collapsed surface-panel" aria-label="Transaction details">
+      <aside
+        className="detail-panel detail-panel--collapsed surface-panel"
+        aria-label="Transaction details"
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle?.() }}
+      >
         <div className="detail-panel__collapsed-label">Details</div>
       </aside>
     )
@@ -834,6 +856,16 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
               </h2>
               <p className="detail-panel__subtitle">Classify and add accounting metadata</p>
             </div>
+            {onToggle && (
+              <button
+                type="button"
+                className="detail-panel__collapse-button"
+                onClick={onToggle}
+                aria-label="Collapse details"
+              >
+                <CollapseDetailIcon />
+              </button>
+            )}
           </div>
 
           <div className="detail-panel__txid-box">

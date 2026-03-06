@@ -377,6 +377,8 @@ fn build_graph_payload(
         node.confirmations = tx_view.confirmations;
         node.height = tx_view.block_height;
         node.time = tx_view.block_time;
+        node.vsize = Some(tx_view.vsize);
+        node.fee_sat = tx_view.fee_sat;
         node.is_root = txid == root_txid;
 
         if current_depth >= depth {
@@ -485,6 +487,8 @@ fn missing_node(txid: &str, is_root: bool) -> GraphNode {
         confirmations: None,
         height: None,
         time: None,
+        vsize: None,
+        fee_sat: None,
         is_root,
         label: None,
         classification_category: None,

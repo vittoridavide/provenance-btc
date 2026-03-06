@@ -20,31 +20,17 @@ function SearchIcon() {
 type TopBarProps = {
   rootTxid: string
   onSearchTxid: (txid: string) => void
-  onFitView: () => void
-  onResetLayout: () => void
   onExportGraphJson: () => Promise<void> | void
   onExportLabels: () => Promise<void> | void
   onImportLabels: (file: File) => Promise<void> | void
-  showPanelToggles: boolean
-  sidebarCollapsed: boolean
-  detailCollapsed: boolean
-  onToggleSidebar: () => void
-  onToggleDetail: () => void
 }
 
 function TopBar({
   rootTxid,
   onSearchTxid,
-  onFitView,
-  onResetLayout,
   onExportGraphJson,
   onExportLabels,
   onImportLabels,
-  showPanelToggles,
-  sidebarCollapsed,
-  detailCollapsed,
-  onToggleSidebar,
-  onToggleDetail,
 }: TopBarProps) {
   const { canControl, isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
@@ -108,42 +94,6 @@ function TopBar({
         </div>
       </form>
       <div className="top-bar__actions">
-        {showPanelToggles && (
-          <>
-            <button
-              type="button"
-              className="top-bar__button top-bar__panel-toggle control-button"
-              onClick={onToggleSidebar}
-              aria-pressed={!sidebarCollapsed}
-            >
-              {sidebarCollapsed ? 'Show controls' : 'Hide controls'}
-            </button>
-            <button
-              type="button"
-              className="top-bar__button top-bar__panel-toggle control-button"
-              onClick={onToggleDetail}
-              aria-pressed={!detailCollapsed}
-            >
-              {detailCollapsed ? 'Show details' : 'Hide details'}
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          className="top-bar__button control-button"
-          onClick={onFitView}
-          disabled={actionsDisabled}
-        >
-          Fit to view
-        </button>
-        <button
-          type="button"
-          className="top-bar__button control-button"
-          onClick={onResetLayout}
-          disabled={actionsDisabled}
-        >
-          Reset layout
-        </button>
         <button
           type="button"
           className="top-bar__button control-button"

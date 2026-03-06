@@ -9,6 +9,7 @@ import {
 type SidebarProps = {
   collapsed?: boolean
   selectedTxid: string | null
+  onToggle?: () => void
 }
 
 function clampDepth(nextDepth: number): number {
@@ -90,7 +91,21 @@ const CLASSIFICATION_LEGEND_ITEMS = [
   { label: 'Other', className: 'sidebar__legend-swatch--other' },
 ] as const
 
-function Sidebar({ collapsed = false }: SidebarProps) {
+function CollapseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M9 3L5 7l4 4"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   const { depth, showTransactions, colorByCategory } = useSyncExternalStore(
     subscribeGraphControls,
     getGraphControlsSnapshot,
@@ -99,7 +114,14 @@ function Sidebar({ collapsed = false }: SidebarProps) {
 
   if (collapsed) {
     return (
-      <aside className="sidebar sidebar--collapsed" aria-label="Controls">
+      <aside
+        className="sidebar sidebar--collapsed"
+        aria-label="Controls"
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle?.() }}
+      >
         <div className="sidebar__collapsed-label">Controls</div>
       </aside>
     )
@@ -109,7 +131,19 @@ function Sidebar({ collapsed = false }: SidebarProps) {
     <aside className="sidebar">
       <div className="sidebar__content">
         <section className="sidebar__section">
-          <h3 className="sidebar__section-header">Graph Controls</h3>
+          <div className="sidebar__section-header-row">
+            <h3 className="sidebar__section-header">Graph Controls</h3>
+            {onToggle && (
+              <button
+                type="button"
+                className="sidebar__collapse-button"
+                onClick={onToggle}
+                aria-label="Collapse controls"
+              >
+                <CollapseIcon />
+              </button>
+            )}
+          </div>
 
           <div className="sidebar__field">
             <span className="sidebar__field-label">Depth: {depth}</span>

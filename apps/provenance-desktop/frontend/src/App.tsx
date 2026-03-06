@@ -119,8 +119,8 @@ function App() {
       setWorkspacePreset((currentPreset) => {
         const nextPreset = resolveWorkspacePreset(getViewportWidth())
         if (nextPreset.key === currentPreset.key) return currentPreset
-        setSidebarCollapsed(nextPreset.defaultSidebarCollapsed)
-        setDetailCollapsed(nextPreset.defaultDetailCollapsed)
+        setSidebarCollapsed((current) => current || nextPreset.defaultSidebarCollapsed)
+        setDetailCollapsed((current) => current || nextPreset.defaultDetailCollapsed)
         return nextPreset
       })
     }
@@ -170,7 +170,6 @@ function App() {
     return classNames.join(' ')
   }, [detailCollapsed, selectedTxid, workspacePreset.compact])
 
-  const showPanelToggles = workspacePreset.compact || sidebarCollapsed || detailCollapsed
   const handleToggleSidebar = useCallback(() => {
     setSidebarCollapsed((current) => !current)
   }, [])
@@ -193,12 +192,6 @@ function App() {
     }
 
     setGraphReloadKey((current) => current + 1)
-  }, [])
-  const handleFitView = useCallback(() => {
-    graphViewActionsRef.current?.fitView()
-  }, [])
-  const handleResetLayout = useCallback(() => {
-    graphViewActionsRef.current?.resetLayout()
   }, [])
   const handleExportGraphJson = useCallback(async () => {
     if (!graphData || graphData.nodes.length === 0) {
@@ -242,36 +235,32 @@ function App() {
       <TopBar
         rootTxid={rootTxid}
         onSearchTxid={handleSearchTxid}
-        onFitView={handleFitView}
-        onResetLayout={handleResetLayout}
         onExportGraphJson={handleExportGraphJson}
         onExportLabels={handleExportLabels}
         onImportLabels={handleImportLabels}
-        showPanelToggles={showPanelToggles}
-        sidebarCollapsed={sidebarCollapsed}
-        detailCollapsed={detailCollapsed}
-        onToggleSidebar={handleToggleSidebar}
-        onToggleDetail={handleToggleDetail}
       />
       <div className="content-row">
-        <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} />
+        <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} onToggle={handleToggleSidebar} />
         <div className="main-area">
-          <div className={workspaceClassName}>
-            <GraphCanvas
-              rootTxid={rootTxid}
-              reloadKey={graphReloadKey}
-              selectedTxid={selectedTxid}
-              onSelectTxid={handleSelectTxid}
-              onGraphDataChange={handleGraphDataChange}
-              onRegisterViewActions={handleRegisterViewActions}
-              onRegisterRefresh={handleRegisterGraphRefresh}
-            />
-            <DetailPanel
-              selectedTxid={selectedTxid}
-              collapsed={detailCollapsed}
-              onGraphRefresh={handleGraphRefresh}
-              onDeselect={() => setSelectedTxid(null)}
-            />
+          <div className="workspace-scroll">
+            <div className={workspaceClassName}>
+              <GraphCanvas
+                rootTxid={rootTxid}
+                reloadKey={graphReloadKey}
+                selectedTxid={selectedTxid}
+                onSelectTxid={handleSelectTxid}
+                onGraphDataChange={handleGraphDataChange}
+                onRegisterViewActions={handleRegisterViewActions}
+                onRegisterRefresh={handleRegisterGraphRefresh}
+              />
+              <DetailPanel
+                selectedTxid={selectedTxid}
+                collapsed={detailCollapsed}
+                onGraphRefresh={handleGraphRefresh}
+                onDeselect={() => setSelectedTxid(null)}
+                onToggle={handleToggleDetail}
+              />
+            </div>
           </div>
         </div>
       </div>
