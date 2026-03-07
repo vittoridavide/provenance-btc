@@ -1,20 +1,18 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use provenance_core::api::types::{
-    Classification, ClassificationState, GraphBuildOptions, GraphEdge, GraphNode, GraphSummary,
-    ImportSummary, ProvenanceGraph, RefType, TransactionDetail, TxInput, TxOutput, TxStatus,
+    Classification, GraphBuildOptions, ImportSummary, ProvenanceGraph, RefType, TransactionDetail,
+    TxInput, TxOutput,
 };
 use provenance_core::bip329::{export_bip329_jsonl, import_bip329_jsonl};
 
 use provenance_core::model::tx_view::TxView;
+use provenance_core::reporting::{build_graph_export_context, GraphExportContextRequest};
 use provenance_core::rpc::client::{CoreRpc, RpcAuth, RpcConfig};
 use provenance_core::rpc::types::CoreStatus;
 use provenance_core::store::classifications;
 use provenance_core::store::db::Database;
 use provenance_core::store::labels;
-
-use rusqlite::{params_from_iter, Connection};
-use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::sync::{Arc, RwLock};
 
@@ -121,7 +119,10 @@ async fn cmd_build_graph(
     tauri::async_runtime::spawn_blocking(move || {
         let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
         let db = open_db(&db_path)?;
-        build_graph_payload(&rpc, db.conn(), &root_txid, depth).map_err(|e| e.to_string())
+        let request = GraphExportContextRequest::new(root_txid, depth);
+        let context =
+            build_graph_export_context(&rpc, db.conn(), &request).map_err(|e| e.to_string())?;
+        Ok(context.to_provenance_graph())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -320,253 +321,6 @@ async fn cmd_import_labels(
 #[tauri::command]
 fn cmd_export_graph_json(graph: ProvenanceGraph) -> Result<String, String> {
     serde_json::to_string_pretty(&graph).map_err(|e| e.to_string())
-}
-
-fn build_graph_payload(
-    rpc: &CoreRpc,
-    conn: &Connection,
-    root_txid: &str,
-    depth: u32,
-) -> provenance_core::Result<ProvenanceGraph> {
-    if root_txid.trim().is_empty() {
-        return Err(provenance_core::CoreError::Other(
-            "root_txid must not be empty".to_string(),
-        ));
-    }
-
-    let mut nodes: HashMap<String, GraphNode> = HashMap::new();
-    let mut edges: Vec<GraphEdge> = Vec::new();
-    let mut q = VecDeque::<(String, u32)>::new();
-    let mut queued = HashSet::<String>::new();
-    let mut visited = HashSet::<String>::new();
-
-    q.push_back((root_txid.to_string(), 0));
-    queued.insert(root_txid.to_string());
-    nodes.insert(root_txid.to_string(), missing_node(root_txid, true));
-
-    while let Some((txid, current_depth)) = q.pop_front() {
-        queued.remove(&txid);
-        if !visited.insert(txid.clone()) {
-            continue;
-        }
-
-        let tx_view = match rpc.fetch_tx_view(&txid) {
-            Ok(view) => view,
-            Err(err) => {
-                if txid == root_txid {
-                    return Err(provenance_core::CoreError::Other(format!(
-                        "failed to fetch root tx '{root_txid}': {err}"
-                    )));
-                }
-                let node = nodes
-                    .entry(txid.clone())
-                    .or_insert_with(|| missing_node(&txid, false));
-                node.status = TxStatus::Missing;
-                continue;
-            }
-        };
-
-        let node = nodes
-            .entry(txid.clone())
-            .or_insert_with(|| missing_node(&txid, txid == root_txid));
-        node.status = if tx_view.confirmations.unwrap_or(0) > 0 {
-            TxStatus::Confirmed
-        } else {
-            TxStatus::Mempool
-        };
-        node.confirmations = tx_view.confirmations;
-        node.height = tx_view.block_height;
-        node.time = tx_view.block_time;
-        node.vsize = Some(tx_view.vsize);
-        node.fee_sat = tx_view.fee_sat;
-        node.is_root = txid == root_txid;
-
-        if current_depth >= depth {
-            continue;
-        }
-
-        for input in tx_view.inputs.iter().filter(|input| !input.is_coinbase) {
-            let parent_txid = input.prev_txid.clone();
-
-            edges.push(GraphEdge {
-                from_txid: txid.clone(),
-                to_txid: parent_txid.clone(),
-                vin_index: input.vin,
-            });
-
-            nodes
-                .entry(parent_txid.clone())
-                .or_insert_with(|| missing_node(&parent_txid, false));
-
-            if !visited.contains(&parent_txid) && queued.insert(parent_txid.clone()) {
-                q.push_back((parent_txid, current_depth + 1));
-            }
-        }
-    }
-
-    let txids = nodes.keys().cloned().collect::<Vec<_>>();
-    let labels_map = fetch_tx_labels_for_ids(conn, &txids)?;
-    let classifications_map = fetch_tx_classifications_for_ids(conn, &txids)?;
-
-    for (txid, node) in &mut nodes {
-        node.label = labels_map.get(txid).cloned();
-
-        if let Some(classification) = classifications_map.get(txid) {
-            node.classification_category = Some(classification.category.clone());
-            node.classification_state = ClassificationState::TxOnly;
-        } else {
-            node.classification_category = None;
-            node.classification_state = ClassificationState::None;
-        }
-    }
-
-    let mut missing_parent_counts = HashMap::<String, u32>::new();
-    for edge in &edges {
-        if matches!(
-            nodes.get(&edge.to_txid).map(|node| node.status),
-            Some(TxStatus::Missing)
-        ) {
-            *missing_parent_counts
-                .entry(edge.from_txid.clone())
-                .or_insert(0) += 1;
-        }
-    }
-    for (txid, node) in &mut nodes {
-        node.missing_parents_count = *missing_parent_counts.get(txid).unwrap_or(&0);
-    }
-
-    let mut nodes_vec = nodes.into_values().collect::<Vec<_>>();
-    nodes_vec.sort_by(|a, b| a.txid.cmp(&b.txid));
-
-    edges.sort_by(|a, b| {
-        a.from_txid
-            .cmp(&b.from_txid)
-            .then_with(|| a.to_txid.cmp(&b.to_txid))
-            .then_with(|| a.vin_index.cmp(&b.vin_index))
-    });
-
-    let summary = GraphSummary {
-        total_nodes: nodes_vec.len() as u32,
-        unclassified_nodes: nodes_vec
-            .iter()
-            .filter(|n| matches!(n.classification_state, ClassificationState::None))
-            .count() as u32,
-        missing_parent_edges: edges
-            .iter()
-            .filter(|e| {
-                matches!(
-                    nodes_vec
-                        .iter()
-                        .find(|n| n.txid == e.to_txid)
-                        .map(|n| n.status),
-                    Some(TxStatus::Missing)
-                )
-            })
-            .count() as u32,
-        confirmed_nodes: nodes_vec
-            .iter()
-            .filter(|n| matches!(n.status, TxStatus::Confirmed))
-            .count() as u32,
-        mempool_nodes: nodes_vec
-            .iter()
-            .filter(|n| matches!(n.status, TxStatus::Mempool))
-            .count() as u32,
-    };
-
-    Ok(ProvenanceGraph {
-        nodes: nodes_vec,
-        edges,
-        summary,
-    })
-}
-
-fn missing_node(txid: &str, is_root: bool) -> GraphNode {
-    GraphNode {
-        txid: txid.to_string(),
-        status: TxStatus::Missing,
-        confirmations: None,
-        height: None,
-        time: None,
-        vsize: None,
-        fee_sat: None,
-        is_root,
-        label: None,
-        classification_category: None,
-        classification_state: ClassificationState::None,
-        missing_parents_count: 0,
-    }
-}
-
-fn fetch_tx_labels_for_ids(
-    conn: &Connection,
-    txids: &[String],
-) -> provenance_core::Result<HashMap<String, String>> {
-    if txids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let placeholders = vec!["?"; txids.len()].join(", ");
-    let sql = format!(
-        "SELECT ref_id, label
-         FROM labels
-         WHERE ref_type = 'tx' AND ref_id IN ({placeholders})"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query(params_from_iter(txids.iter()))?;
-
-    let mut out = HashMap::new();
-    while let Some(row) = rows.next()? {
-        let ref_id: String = row.get(0)?;
-        let label: String = row.get(1)?;
-        out.insert(ref_id, label);
-    }
-
-    Ok(out)
-}
-
-fn fetch_tx_classifications_for_ids(
-    conn: &Connection,
-    txids: &[String],
-) -> provenance_core::Result<HashMap<String, Classification>> {
-    if txids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let placeholders = vec!["?"; txids.len()].join(", ");
-    let sql = format!(
-        "SELECT ref_id, category, context, metadata, tax_relevant
-         FROM classifications
-         WHERE ref_type = 'tx' AND ref_id IN ({placeholders})"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query(params_from_iter(txids.iter()))?;
-
-    let mut out = HashMap::new();
-    while let Some(row) = rows.next()? {
-        let ref_id: String = row.get(0)?;
-        let category: String = row.get(1)?;
-        let context: Option<String> = row.get(2)?;
-        let metadata_raw: String = row.get(3)?;
-        let tax_relevant: i64 = row.get(4)?;
-
-        let metadata = serde_json::from_str(&metadata_raw).map_err(|e| {
-            provenance_core::CoreError::Other(format!(
-                "invalid classification metadata for '{ref_id}': {e}"
-            ))
-        })?;
-
-        out.insert(
-            ref_id,
-            Classification {
-                category,
-                context: context.unwrap_or_default(),
-                metadata,
-                tax_relevant: tax_relevant != 0,
-            },
-        );
-    }
-
-    Ok(out)
 }
 
 fn stored_to_api_classification(stored: &classifications::StoredClassification) -> Classification {

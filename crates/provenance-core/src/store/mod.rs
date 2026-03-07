@@ -1,4 +1,6 @@
 #[cfg(feature = "store-sqlite")]
+pub mod bip329_records;
+#[cfg(feature = "store-sqlite")]
 pub mod classifications;
 #[cfg(feature = "store-sqlite")]
 pub mod db;

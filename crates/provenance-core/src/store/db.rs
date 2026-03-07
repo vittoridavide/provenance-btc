@@ -4,7 +4,7 @@ use crate::Result;
 
 /// Current schema version. Bump this and add a migration branch
 /// in `run_migrations` whenever the schema changes.
-const LATEST_VERSION: u32 = 2;
+const LATEST_VERSION: u32 = 3;
 
 /// Single entry-point for all SQLite access.
 ///
@@ -50,6 +50,27 @@ fn set_version(conn: &Connection, version: u32) -> Result<()> {
     Ok(())
 }
 
+/// v2 → v3: create `bip329_records` table.
+fn migrate_to_v3(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS bip329_records (
+            record_type         TEXT    NOT NULL,
+            record_ref          TEXT    NOT NULL,
+            origin_key          TEXT    NOT NULL DEFAULT '',
+            payload_json        TEXT    NOT NULL,
+            raw_json            TEXT    NOT NULL,
+            tracks_local_label  INTEGER NOT NULL DEFAULT 0 CHECK(tracks_local_label IN (0,1)),
+            created_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY (record_type, record_ref, origin_key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bip329_records_lookup
+            ON bip329_records(record_type, record_ref);",
+    )?;
+    Ok(())
+}
+
 /// v1 → v2: create `classifications` table.
 fn migrate_to_v2(conn: &Connection) -> Result<()> {
     conn.execute_batch(
@@ -80,7 +101,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     if current < 2 {
         migrate_to_v2(conn)?;
     }
-    // Future: if current < 2 { migrate_to_v2(conn)?; }
+    if current < 3 {
+        migrate_to_v3(conn)?;
+    }
 
     if current < LATEST_VERSION {
         set_version(conn, LATEST_VERSION)?;

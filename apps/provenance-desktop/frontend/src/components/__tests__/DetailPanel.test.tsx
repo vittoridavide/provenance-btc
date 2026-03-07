@@ -148,6 +148,48 @@ describe('DetailPanel', () => {
     await waitFor(() => expect(onGraphRefresh).toHaveBeenCalledTimes(1))
   })
 
+  it('syncs graph badge when classification is changed back to the original value', async () => {
+    const detail = makeDetail()
+    mockDetail(detail)
+    const onGraphRefresh = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    render(<DetailPanel selectedTxid={detail.txid} onGraphRefresh={onGraphRefresh} />)
+    const user = userEvent.setup()
+    const txClassificationSelect = screen.getAllByRole('combobox')[0]
+
+    await user.selectOptions(txClassificationSelect, 'expense')
+    await user.selectOptions(txClassificationSelect, 'revenue')
+
+    await waitFor(() => {
+      const txClassificationCalls = vi
+        .mocked(invoke)
+        .mock.calls.filter(
+          ([command, payload]) =>
+            command === 'cmd_set_classification' &&
+            (payload as { refType?: string }).refType === 'tx',
+        )
+
+      expect(txClassificationCalls).toHaveLength(2)
+      expect(txClassificationCalls[0]?.[1]).toEqual(
+        expect.objectContaining({
+          refType: 'tx',
+          refId: detail.txid,
+          classification: expect.objectContaining({ category: 'expense' }),
+        }),
+      )
+      expect(txClassificationCalls[1]?.[1]).toEqual(
+        expect.objectContaining({
+          refType: 'tx',
+          refId: detail.txid,
+          classification: expect.objectContaining({ category: 'revenue' }),
+        }),
+      )
+    })
+
+    await waitFor(() => expect(onGraphRefresh).toHaveBeenCalledTimes(2))
+  })
+
   it('saves classification and refreshes detail', async () => {
     const detail = makeDetail({ classification: null })
     const { reload } = mockDetail(detail)

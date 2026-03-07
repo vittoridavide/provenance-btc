@@ -474,9 +474,6 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
       const normalizedCategory = nextCategory.trim()
       if (!normalizedCategory) return
 
-      const existingCategory = loadedDetail.classification?.category?.trim() ?? ''
-      if (normalizedCategory === existingCategory) return
-
       const requestId = primaryClassificationSyncRequestRef.current + 1
       primaryClassificationSyncRequestRef.current = requestId
       setIsSyncingPrimaryClassification(true)

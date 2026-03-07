@@ -110,3 +110,121 @@ export interface ImportSummary {
   errors: string[]
 }
 
+export type ReportKind = 'transactions' | 'outputs' | 'exceptions'
+
+export type ReportScope = 'current_graph'
+
+export interface GraphExportContextRequest {
+  root_txid: string
+  traversal_depth: number
+}
+
+export interface ReportRequest {
+  kind: ReportKind
+  scope: ReportScope
+}
+
+export type ReportSeverity = 'error' | 'warning'
+
+export type ReportIssueCode =
+  | 'missing_parent'
+  | 'mempool_transaction'
+  | 'unclassified_transaction'
+  | 'unclassified_output'
+  | 'missing_tax_metadata'
+
+export interface ReportWarning {
+  severity: ReportSeverity
+  issue_code: ReportIssueCode
+  ref_type: RefType
+  ref_id: string
+  message: string
+}
+
+export interface ReportManifest {
+  report_kind: ReportKind
+  report_scope: ReportScope
+  schema_version: number
+  row_count: number
+  columns: string[]
+  suggested_filename: string
+}
+
+export interface ReportPreviewRequest {
+  graph: GraphExportContextRequest
+  report: ReportRequest
+}
+
+export interface ReportPreviewResponse {
+  manifest: ReportManifest
+  warnings: ReportWarning[]
+}
+
+export interface ReportExportRequest {
+  graph: GraphExportContextRequest
+  report: ReportRequest
+}
+
+export interface ReportExportResult {
+  manifest: ReportManifest
+  warnings: ReportWarning[]
+  csv_contents: string
+}
+
+export type Bip329ImportDisposition =
+  | 'apply_supported'
+  | 'preserve_only'
+  | 'ambiguous_supported'
+  | 'invalid'
+  | 'ignored_unsupported'
+
+export interface Bip329ImportPreviewLine {
+  line_number: number
+  disposition: Bip329ImportDisposition
+  record_type: string | null
+  record_ref: string | null
+  origin: string | null
+  message: string | null
+}
+
+export interface Bip329ImportPreviewRequest {
+  jsonl_contents: string
+}
+
+export interface Bip329ImportPreviewResponse {
+  total_lines: number
+  apply_supported: number
+  preserve_only: number
+  ambiguous_supported: number
+  invalid: number
+  ignored_unsupported: number
+  lines: Bip329ImportPreviewLine[]
+}
+
+export interface Bip329ImportApplyRequest {
+  jsonl_contents: string
+}
+
+export interface Bip329ImportErrorLine {
+  line_number: number
+  message: string
+}
+
+export interface Bip329ImportApplyResult {
+  total_lines: number
+  imported: number
+  preserved_only: number
+  ambiguous_supported: number
+  skipped_unsupported_type: number
+  skipped_invalid: number
+  errors: Bip329ImportErrorLine[]
+}
+
+export interface Bip329ExportResult {
+  suggested_filename: string
+  record_count: number
+  supported_label_count: number
+  preserved_record_count: number
+  jsonl_contents: string
+}
+
