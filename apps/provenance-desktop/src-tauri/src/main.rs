@@ -24,17 +24,71 @@ use std::env;
 use std::fs;
 use std::sync::{Arc, RwLock};
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetRpcConfigArgs {
+    url: String,
+    auth_mode: Option<SetRpcAuthMode>,
+    username: Option<String>,
+    password: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum SetRpcAuthMode {
+    None,
+    UserPass,
+}
+
+fn normalize_optional_non_empty(value: Option<String>) -> Option<String> {
+    value.and_then(|v| if v.trim().is_empty() { None } else { Some(v) })
+}
+
+fn parse_rpc_auth(
+    auth_mode: Option<SetRpcAuthMode>,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<RpcAuth, String> {
+    let username = normalize_optional_non_empty(username);
+    let password = normalize_optional_non_empty(password);
+
+    let mode = auth_mode.or_else(|| {
+        if username.is_some() || password.is_some() {
+            Some(SetRpcAuthMode::UserPass)
+        } else {
+            None
+        }
+    });
+
+    match mode {
+        Some(SetRpcAuthMode::None) => {
+            if username.is_some() || password.is_some() {
+                return Err(
+                    "RPC auth mode 'none' does not accept username/password. Remove credentials or use authMode 'userpass'."
+                        .into(),
+                );
+            }
+            Ok(RpcAuth::None)
+        }
+        Some(SetRpcAuthMode::UserPass) => match (username, password) {
+            (Some(username), Some(password)) => Ok(RpcAuth::UserPass { username, password }),
+            (None, None) => {
+                Err("RPC auth mode 'userpass' requires both username and password.".into())
+            }
+            (None, Some(_)) => Err("RPC auth mode 'userpass' is missing username.".into()),
+            (Some(_), None) => Err("RPC auth mode 'userpass' is missing password.".into()),
+        },
+        None => Err(
+            "RPC auth mode is required. Set authMode to 'none' for unauthenticated RPC, or 'userpass' with username/password."
+                .into(),
+        ),
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     rpc_config: Arc<RwLock<Option<RpcConfig>>>,
     db_path: Arc<String>,
-}
-
-#[derive(serde::Deserialize)]
-struct SetRpcConfigArgs {
-    url: String,
-    username: Option<String>,
-    password: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -75,20 +129,13 @@ fn cmd_set_rpc_config(
     state: tauri::State<'_, AppState>,
     args: SetRpcConfigArgs,
 ) -> Result<(), String> {
-    let auth = match (args.username, args.password) {
-        (Some(u), Some(p)) => RpcAuth::UserPass {
-            username: u,
-            password: p,
-        },
-        _ => return Err("Username and password required".into()),
-    };
+    let auth = parse_rpc_auth(args.auth_mode, args.username, args.password)?;
 
     let cfg = RpcConfig {
         url: args.url,
         auth,
     };
     // Validate RPC immediately.
-    // Validate immediately
     CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
 
     *state.rpc_config.write().unwrap() = Some(cfg);
@@ -493,7 +540,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_text_file, write_text_file};
+    use super::{parse_rpc_auth, read_text_file, write_text_file, SetRpcAuthMode};
+    use provenance_core::rpc::client::RpcAuth;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -539,5 +587,52 @@ mod tests {
 
         fs::remove_file(&output_path).expect("cleanup file");
         fs::remove_dir_all(&output_dir).expect("cleanup directory");
+    }
+
+    #[test]
+    fn parse_rpc_auth_accepts_none_mode_without_credentials() {
+        let auth = parse_rpc_auth(Some(SetRpcAuthMode::None), None, None)
+            .expect("none mode should not require credentials");
+        assert!(matches!(auth, RpcAuth::None));
+    }
+
+    #[test]
+    fn parse_rpc_auth_rejects_credentials_in_none_mode() {
+        let err = parse_rpc_auth(
+            Some(SetRpcAuthMode::None),
+            Some("alice".to_string()),
+            Some("secret".to_string()),
+        )
+        .expect_err("none mode should reject credentials");
+
+        assert!(err.contains("mode 'none'"));
+        assert!(err.contains("does not accept username/password"));
+    }
+
+    #[test]
+    fn parse_rpc_auth_requires_mode_specific_userpass_fields() {
+        let err = parse_rpc_auth(
+            Some(SetRpcAuthMode::UserPass),
+            Some("alice".to_string()),
+            None,
+        )
+        .expect_err("userpass mode should require password");
+
+        assert!(err.contains("mode 'userpass'"));
+        assert!(err.contains("missing password"));
+    }
+
+    #[test]
+    fn parse_rpc_auth_keeps_existing_userpass_flow_when_mode_is_omitted() {
+        let auth = parse_rpc_auth(None, Some("alice".to_string()), Some("secret".to_string()))
+            .expect("credentials without mode should still resolve to userpass");
+
+        match auth {
+            RpcAuth::UserPass { username, password } => {
+                assert_eq!(username, "alice");
+                assert_eq!(password, "secret");
+            }
+            _ => panic!("expected userpass auth"),
+        }
     }
 }

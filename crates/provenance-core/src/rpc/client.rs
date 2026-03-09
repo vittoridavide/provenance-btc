@@ -58,6 +58,7 @@ pub struct RpcConfig {
 
 #[derive(Debug, Clone)]
 pub enum RpcAuth {
+    None,
     UserPass { username: String, password: String },
     CookieFile { path: String },
 }
@@ -95,6 +96,7 @@ impl RpcConfig {
 
     pub fn to_auth(&self) -> Result<Auth> {
         match &self.auth {
+            RpcAuth::None => Ok(Auth::None),
             RpcAuth::UserPass { username, password } => {
                 Ok(Auth::UserPass(username.to_string(), password.to_string()))
             }
