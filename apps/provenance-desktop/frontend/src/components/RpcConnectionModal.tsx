@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { AlertTriangle, ChevronDown, Info, Lock, Unlock, X } from 'lucide-react'
 import './RpcConnectionModal.css'
+import { requiresPublicEndpointAcknowledgement, type RpcAuthMode } from '../utils/rpcPrivacy'
 
-export type RpcAuthMode = 'none' | 'userpass'
+export type { RpcAuthMode }
 
 export type RpcConnectionModalProps = {
   isOpen: boolean
@@ -23,75 +24,6 @@ export type RpcConnectionModalProps = {
   onClose: () => void
 }
 
-function parseRpcUrl(value: string): URL | null {
-  const candidate = value.trim()
-  if (!candidate) return null
-
-  try {
-    return new URL(candidate)
-  } catch {
-    try {
-      return new URL(`http://${candidate}`)
-    } catch {
-      return null
-    }
-  }
-}
-
-function isPrivateIpv4(hostname: string): boolean {
-  const parts = hostname.split('.').map((part) => Number.parseInt(part, 10))
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) return false
-
-  if (parts[0] === 10) return true
-  if (parts[0] === 127) return true
-  if (parts[0] === 192 && parts[1] === 168) return true
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true
-  if (parts[0] === 169 && parts[1] === 254) return true
-  if (parts[0] === 0) return true
-
-  return false
-}
-
-function isLocalHostname(hostname: string): boolean {
-  const normalized = hostname.trim().toLowerCase()
-  if (!normalized) return false
-
-  if (
-    normalized === 'localhost' ||
-    normalized === '::1' ||
-    normalized === '[::1]' ||
-    normalized === '0.0.0.0'
-  ) {
-    return true
-  }
-
-  if (normalized.endsWith('.local')) {
-    return true
-  }
-
-  if (isPrivateIpv4(normalized)) {
-    return true
-  }
-
-  if (
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    normalized.startsWith('fe80:')
-  ) {
-    return true
-  }
-
-  return false
-}
-
-function isPublicNoAuthEndpoint(url: string, authMode: RpcAuthMode): boolean {
-  if (authMode !== 'none') return false
-
-  const parsedUrl = parseRpcUrl(url)
-  if (!parsedUrl) return false
-
-  return !isLocalHostname(parsedUrl.hostname)
-}
 
 function canSubmit({
   url,
@@ -179,7 +111,7 @@ function RpcConnectionModal({
 
   if (!isOpen) return null
 
-  const requiresAcknowledgement = isPublicNoAuthEndpoint(url, authMode)
+  const requiresAcknowledgement = requiresPublicEndpointAcknowledgement(url, authMode)
   const isSubmitEnabled = canSubmit({
     url,
     authMode,

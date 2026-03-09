@@ -122,6 +122,26 @@ describe('RpcConnectionModal', () => {
     expect(onConnect).toHaveBeenCalledTimes(1)
   })
 
+  it('shows warning for non-loopback private network endpoints when auth is none', () => {
+    render(<ModalHarness initialUrl="http://192.168.1.50:8332" />)
+
+    expect(screen.getByText('Privacy warning')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled()
+  })
+
+  it('does not show warning for public endpoint when auth is userpass', async () => {
+    const user = userEvent.setup()
+
+    render(<ModalHarness initialUrl="https://rpc.example.com:8332" initialAuthMode="none" />)
+    expect(screen.getByText('Privacy warning')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Authentication' }), 'userpass')
+
+    expect(screen.queryByText('Privacy warning')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Username')).toBeInTheDocument()
+    expect(screen.getByLabelText('Password')).toBeInTheDocument()
+  })
+
   it('applies disabled and loading states while connecting', () => {
     render(<ModalHarness initialUrl="http://127.0.0.1:8332" isConnecting />)
 

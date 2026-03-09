@@ -22,6 +22,7 @@ type TopBarProps = {
   onSearchTxid: (txid: string) => void
   onExportGraphJson: () => Promise<void> | void
   onOpenImportExport: () => void
+  onOpenRpcSettings: () => void
 }
 
 function TopBar({
@@ -29,6 +30,7 @@ function TopBar({
   onSearchTxid,
   onExportGraphJson,
   onOpenImportExport,
+  onOpenRpcSettings,
 }: TopBarProps) {
   const { canControl, isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
@@ -89,6 +91,13 @@ function TopBar({
           onClick={onOpenImportExport}
         >
           Import / Export
+        </button>
+        <button
+          type="button"
+          className="top-bar__button control-button"
+          onClick={onOpenRpcSettings}
+        >
+          RPC Settings
         </button>
       </div>
     </header>

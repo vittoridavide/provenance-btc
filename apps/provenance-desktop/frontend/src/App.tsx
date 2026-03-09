@@ -7,6 +7,7 @@ import ImportExportCenter from './components/import-export/ImportExportCenter'
 import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
+import { requiresPublicEndpointAcknowledgement } from './utils/rpcPrivacy'
 import type {
   Bip329ExportResult,
   Bip329ImportApplyResult,
@@ -257,6 +258,15 @@ function App() {
       setRpcConnectionError('RPC URL is required.')
       return
     }
+    if (
+      requiresPublicEndpointAcknowledgement(normalizedUrl, rpcAuthMode) &&
+      !publicEndpointAcknowledged
+    ) {
+      setRpcConnectionError(
+        'Acknowledge the privacy warning before connecting to a non-local unauthenticated RPC endpoint.',
+      )
+      return
+    }
 
     setIsRpcConnecting(true)
     setRpcConnectionError(null)
@@ -290,7 +300,14 @@ function App() {
     } finally {
       setIsRpcConnecting(false)
     }
-  }, [handleWorkspaceRefresh, rpcAuthMode, rpcPassword, rpcUrl, rpcUsername])
+  }, [
+    handleWorkspaceRefresh,
+    publicEndpointAcknowledged,
+    rpcAuthMode,
+    rpcPassword,
+    rpcUrl,
+    rpcUsername,
+  ])
   const handleExportGraphJson = useCallback(async () => {
     if (!graphData || graphData.nodes.length === 0) {
       return
@@ -392,6 +409,7 @@ function App() {
           }
           setIsImportExportOpen(true)
         }}
+        onOpenRpcSettings={() => setIsRpcModalOpen(true)}
       />
       <div className="content-row">
         <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} onToggle={handleToggleSidebar} />

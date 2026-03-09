@@ -12,15 +12,14 @@ A Tauri-based desktop application for local-first Bitcoin provenance analysis.
 
 ### Bitcoin Core Configuration
 
-The app currently connects to Bitcoin Core RPC at `http://127.0.0.1:8332`.
+The app now requires RPC setup in-app when it starts. The **Connect Bitcoin RPC** modal opens before graph data loads and must be completed once per launch.
 
-For local development, provide the RPC settings consumed by `frontend/src/App.tsx`:
-
-```bash
-VITE_PROVENANCE_RPC_URL=http://127.0.0.1:8332
-VITE_PROVENANCE_RPC_USER=your_rpc_username
-VITE_PROVENANCE_RPC_PASS=your_rpc_password
-```
+- Enter your RPC URL (for example `http://127.0.0.1:8332`).
+- Choose authentication mode:
+  - `None`
+  - `Username + Password`
+- If you choose `None` and the endpoint is **not local/loopback**, the app shows a privacy warning and requires explicit acknowledgement before enabling **Connect**.
+- Reopen this modal at any time from the top bar via **RPC Settings** to update connection parameters.
 
 Make sure your `bitcoin.conf` has:
 
@@ -30,7 +29,7 @@ rpcuser=your_rpc_username
 rpcpassword=your_rpc_password
 ```
 
-**TODO**: Implement proper configuration management via settings UI or config file.
+If you connect to a public unauthenticated RPC endpoint, that server may log searched transactions and addresses.
 
 ### Import / Export workflows
 

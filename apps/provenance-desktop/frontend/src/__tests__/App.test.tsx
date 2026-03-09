@@ -113,10 +113,15 @@ vi.mock('../components/Sidebar', () => ({
 }))
 
 vi.mock('../components/TopBar', () => ({
-  default: (props: { onOpenImportExport: () => void }) => (
-    <button type="button" onClick={props.onOpenImportExport}>
-      Open Import Export
-    </button>
+  default: (props: { onOpenImportExport: () => void; onOpenRpcSettings: () => void }) => (
+    <div>
+      <button type="button" onClick={props.onOpenImportExport}>
+        Open Import Export
+      </button>
+      <button type="button" onClick={props.onOpenRpcSettings}>
+        RPC Settings
+      </button>
+    </div>
   ),
 }))
 
@@ -232,6 +237,19 @@ afterEach(() => {
 })
 
 describe('App import/export wiring', () => {
+  it('shows RPC setup modal on startup and blocks dismiss before first successful connection', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('cmd_get_rpc_config_prefill'))
+    expect(screen.getByText('Connect Bitcoin RPC')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByText('RPC connection is required before continuing.')).toBeInTheDocument()
+    expect(screen.getByText('Connect Bitcoin RPC')).toBeInTheDocument()
+    expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument()
+  })
   it('requires modal-first RPC connection before graph workflows run', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -281,6 +299,35 @@ describe('App import/export wiring', () => {
         outputPath: '/tmp/export.jsonl',
       },
     })
+  })
+
+  it('reopens RPC modal from top-bar settings action', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await connectRpc(user)
+
+    expect(screen.queryByText('Connect Bitcoin RPC')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'RPC Settings' }))
+
+    expect(screen.getByText('Connect Bitcoin RPC')).toBeInTheDocument()
+
+    const rpcUrlInput = screen.getByLabelText('RPC URL')
+    await user.clear(rpcUrlInput)
+    await user.type(rpcUrlInput, 'http://127.0.0.1:18443')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('cmd_set_rpc_config', {
+        args: {
+          url: 'http://127.0.0.1:18443',
+          authMode: 'none',
+          username: null,
+          password: null,
+        },
+      }),
+    )
+    await waitFor(() => expect(screen.queryByText('Connect Bitcoin RPC')).not.toBeInTheDocument())
   })
 
   it('refreshes graph and detail state after applying a BIP-329 import', async () => {

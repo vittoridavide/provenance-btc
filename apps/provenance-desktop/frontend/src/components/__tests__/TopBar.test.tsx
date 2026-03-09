@@ -33,6 +33,7 @@ function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
   const onSearchTxid = vi.fn()
   const onExportGraphJson = vi.fn()
   const onOpenImportExport = vi.fn()
+  const onOpenRpcSettings = vi.fn()
 
   const result = render(
     <TopBar
@@ -40,6 +41,7 @@ function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
       onSearchTxid={onSearchTxid}
       onExportGraphJson={onExportGraphJson}
       onOpenImportExport={onOpenImportExport}
+      onOpenRpcSettings={onOpenRpcSettings}
       {...overrides}
     />,
   )
@@ -49,6 +51,7 @@ function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
     onSearchTxid,
     onExportGraphJson,
     onOpenImportExport,
+    onOpenRpcSettings,
   }
 }
 
@@ -62,14 +65,16 @@ afterEach(() => {
 
 describe('TopBar', () => {
   it('wires top-bar action buttons to explicit callbacks', async () => {
-    const { onExportGraphJson, onOpenImportExport } = renderTopBar()
+    const { onExportGraphJson, onOpenImportExport, onOpenRpcSettings } = renderTopBar()
     const user = userEvent.setup()
 
     await user.click(screen.getByRole('button', { name: 'Export graph JSON' }))
     await user.click(screen.getByRole('button', { name: 'Import / Export' }))
+    await user.click(screen.getByRole('button', { name: 'RPC Settings' }))
 
     expect(onExportGraphJson).toHaveBeenCalledTimes(1)
     expect(onOpenImportExport).toHaveBeenCalledTimes(1)
+    expect(onOpenRpcSettings).toHaveBeenCalledTimes(1)
   })
 
   it('disables graph-dependent actions when graph state is unavailable', () => {
