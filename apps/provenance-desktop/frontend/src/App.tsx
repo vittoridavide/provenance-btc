@@ -7,7 +7,6 @@ import ImportExportCenter from './components/import-export/ImportExportCenter'
 import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
-import { requiresPublicEndpointAcknowledgement } from './utils/rpcPrivacy'
 import type {
   Bip329ExportResult,
   Bip329ImportApplyResult,
@@ -29,6 +28,55 @@ type WorkspacePreset = {
   compact: boolean
   defaultSidebarCollapsed: boolean
   defaultDetailCollapsed: boolean
+}
+
+function parseRpcUrl(value: string): URL | null {
+  const candidate = value.trim()
+  if (!candidate) return null
+
+  try {
+    return new URL(candidate)
+  } catch {
+    try {
+      return new URL(`http://${candidate}`)
+    } catch {
+      return null
+    }
+  }
+}
+
+function isLoopbackIpv4(hostname: string): boolean {
+  const octets = hostname.split('.')
+  if (octets.length !== 4) return false
+
+  const parsed = octets.map((part) => Number.parseInt(part, 10))
+  if (parsed.some((part) => Number.isNaN(part) || part < 0 || part > 255)) return false
+
+  return parsed[0] === 127
+}
+
+function isLocalOrLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, '')
+  if (!normalized) return false
+
+  if (normalized === 'localhost' || normalized === '::1' || normalized === '[::1]') {
+    return true
+  }
+
+  if (normalized === '0.0.0.0') {
+    return true
+  }
+
+  return isLoopbackIpv4(normalized)
+}
+
+function requiresPublicEndpointAcknowledgement(url: string, authMode: RpcAuthMode): boolean {
+  if (authMode !== 'none') return false
+
+  const parsedUrl = parseRpcUrl(url)
+  if (!parsedUrl) return false
+
+  return !isLocalOrLoopbackHostname(parsedUrl.hostname)
 }
 type RpcConfigPrefill = {
   schemaVersion: number

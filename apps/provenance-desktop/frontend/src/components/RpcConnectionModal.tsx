@@ -1,9 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { AlertTriangle, ChevronDown, Info, Lock, Unlock, X } from 'lucide-react'
 import './RpcConnectionModal.css'
-import { requiresPublicEndpointAcknowledgement, type RpcAuthMode } from '../utils/rpcPrivacy'
-
-export type { RpcAuthMode }
+export type RpcAuthMode = 'none' | 'userpass'
 
 export type RpcConnectionModalProps = {
   isOpen: boolean
@@ -22,6 +20,55 @@ export type RpcConnectionModalProps = {
   onPublicEndpointAcknowledgedChange: (value: boolean) => void
   onConnect: () => void | Promise<void>
   onClose: () => void
+}
+
+function parseRpcUrl(value: string): URL | null {
+  const candidate = value.trim()
+  if (!candidate) return null
+
+  try {
+    return new URL(candidate)
+  } catch {
+    try {
+      return new URL(`http://${candidate}`)
+    } catch {
+      return null
+    }
+  }
+}
+
+function isLoopbackIpv4(hostname: string): boolean {
+  const octets = hostname.split('.')
+  if (octets.length !== 4) return false
+
+  const parsed = octets.map((part) => Number.parseInt(part, 10))
+  if (parsed.some((part) => Number.isNaN(part) || part < 0 || part > 255)) return false
+
+  return parsed[0] === 127
+}
+
+function isLocalOrLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, '')
+  if (!normalized) return false
+
+  if (normalized === 'localhost' || normalized === '::1' || normalized === '[::1]') {
+    return true
+  }
+
+  if (normalized === '0.0.0.0') {
+    return true
+  }
+
+  return isLoopbackIpv4(normalized)
+}
+
+function requiresPublicEndpointAcknowledgement(url: string, authMode: RpcAuthMode): boolean {
+  if (authMode !== 'none') return false
+
+  const parsedUrl = parseRpcUrl(url)
+  if (!parsedUrl) return false
+
+  return !isLocalOrLoopbackHostname(parsedUrl.hostname)
 }
 
 

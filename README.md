@@ -5,88 +5,103 @@
 <h1 align="center">Provenance</h1>
 
 <p align="center">
-  Local-first Bitcoin capital analysis for businesses.<br/>
-  Turn opaque UTXOs into structured, accountable financial assets.
+  <strong>Turn Bitcoin transaction history into a structured business record.</strong>
 </p>
 
 ---
 
-Provenance is an open-source desktop application built with **Rust + Tauri** that allows business owners to reconstruct coin history, label transactions and UTXOs, and generate audit-ready provenance reports — without leaking data to third parties.
+Provenance is an open-source desktop application built with Rust and Tauri for businesses that need to trace fund history, label transactions and UTXOs with business context, and preserve that knowledge locally for accounting, treasury, and audit workflows.
 
-This tool is **analysis-only** (read-only). It does not create or broadcast transactions.
+It helps transform opaque UTXOs into understandable, accountable financial records without sending sensitive data to third parties.
+
+Provenance is analysis-only (read-only). It does not create, sign, or broadcast transactions.
 
 ## Why Provenance?
 
-Bitcoin wallets abstract away UTXOs.
-Businesses need financial clarity.
+Bitcoin wallets are optimized for spending and balance tracking, not for explaining the financial meaning of coin history.
+
+Businesses need more than raw transaction data. They need to answer questions like:
+
+- Where did these funds come from?
+- Was this customer revenue, an internal transfer, treasury consolidation, a refund, or a supplier payment?
+- Which outputs belong to which business purpose?
+- How can this history be documented later for accounting, tax, or audit review?
 
 Provenance helps you:
 
-* Understand where funds came from
-* Reconstruct historical context
-* Label transactions and outputs with business meaning
-* Prepare documentation for tax authorities or auditors
-* Analyze how funds move across wallets and systems
-* Maintain sovereignty by working entirely with your local Bitcoin node
+- Trace the ancestry of transactions and UTXOs
+- Reconstruct historical fund flows
+- Label transactions and outputs with business meaning
+- Maintain local records for internal review and documentation
+- Analyze movement across wallets and systems
+- Preserve confidentiality by working directly with your own node
 
-This is not a block explorer.
-This is a capital reconstruction tool.
+This is not a block explorer. It is a Bitcoin capital reconstruction and classification tool.
 
 ## Features (Phase 1)
 
-### Transaction & UTXO Inspection
+### Transaction and UTXO Inspection
 
-* Inspect by `txid` or `txid:vout`
-* Recursive ancestry tracing (configurable depth)
-* Fee, feerate, vsize calculation
-* Script type decoding
-* Confirmation and block metadata
+- Inspect by `txid` or `txid:vout`
+- Recursive ancestry tracing with configurable depth
+- Fee, feerate, and vsize calculation
+- Script type decoding
+- Confirmation status and block metadata
 
 ### Provenance Graph
 
-* Expandable ancestry view
-* Focus on specific UTXO paths
-* Depth-limited traversal for performance
+- Expandable ancestry view
+- Focus on specific UTXO paths
+- Depth-limited traversal for performance and control
 
-### Labeling & Reconstruction
+### Labeling and Reconstruction
 
-* Label transactions
-* Label individual outputs (UTXOs)
-* Add notes for accounting context
-* Bulk labeling support
-* Local persistence (SQLite)
+- Label transactions
+- Label individual outputs (UTXOs)
+- Add notes for accounting and operational context
+- Bulk labeling support
+- Local persistence with SQLite
 
 ### BIP-329 Support
 
-* Preview wallet label imports before applying them locally
-* Apply editable local state for `tx` and `output` labels
-* Preserve unsupported or ambiguous records for round-trip export when possible
-* Export labels for portability
+- Preview wallet label imports before applying them locally
+- Apply editable local state for transaction and output labels
+- Preserve unsupported or ambiguous records for round-trip export when possible
+- Export labels for portability
 
 ### Reporting
 
-* CSV export of the current graph as `transactions`, `outputs`, or `exceptions`
-* Preview row counts, suggested filenames, and data-quality warnings before saving
-* Structured provenance report generation without exporting internal notes
+- Export graph-scoped CSV reports for transactions, outputs, or exceptions
+- Preview row counts, suggested filenames, and data-quality warnings before saving
+- Generate structured provenance reports for internal review, accounting support, and audit preparation without exporting internal notes
 
 ### Local-First Architecture
 
-* Connects directly to your Bitcoin Core node
-* No external block explorer calls
-* No telemetry
-* No cloud dependency
+- Connect directly to your local Bitcoin Core node for maximum privacy
+- External RPC backends are also supported for convenience and faster setup
+- No telemetry
+- No cloud dependency
+
+## RPC Options and Privacy Tradeoffs
+
+Provenance supports both local and external RPC backends.
+
+For maximum privacy, use your own local Bitcoin Core node. This keeps transaction and UTXO lookups within your own infrastructure.
+
+External RPC backends are also supported for convenience and faster setup. However, using an external provider may expose transaction queries, requested history, and access patterns to that provider. If confidentiality matters, a local node is strongly recommended.
 
 ## Requirements
 
-* Bitcoin Core with RPC enabled
-* Recommended:
+Bitcoin Core with RPC enabled.
 
-    * `txindex=1` for full historical lookup
-    * Non-pruned node (or ensure relevant blocks are available)
+Recommended:
+
+- `txindex=1` for full historical lookup
+- A non-pruned node, or access to all relevant historical blocks
 
 Example `bitcoin.conf`:
 
-```
+```ini
 server=1
 txindex=1
 rpcuser=youruser
@@ -95,70 +110,60 @@ rpcpassword=yourpassword
 
 ## Security & Privacy Model
 
-* Provenance never broadcasts transactions.
-* All blockchain data is fetched directly from your node.
-* All labels and metadata are stored locally.
-* No external APIs are called.
+* Provenance never broadcasts transactions
+* When connected to a local node, blockchain data is fetched directly from your own Bitcoin Core instance
+* Labels and metadata are stored locally
+* No telemetry or cloud dependency
+* If you choose to use an external RPC provider, transaction queries and access patterns may be visible to that provider
 
-This tool is designed to preserve business confidentiality.
+This tool is designed to preserve operational confidentiality for businesses working with Bitcoin while allowing a practical tradeoff between convenience and privacy.
 
 ## Architecture
 
-* Rust core library (`provenance-core`)
+### Rust Core Library (`provenance-core`)
 
-    * Bitcoin Core RPC client
-    * Provenance graph builder
-    * Label store (SQLite)
-    * BIP-329 parser/exporter
-    * Reporting engine
-* Tauri desktop frontend
+* Bitcoin Core RPC client
+* Provenance graph builder
+* Label store (SQLite)
+* BIP-329 parser and exporter
+* Reporting engine
+
+### Tauri Desktop Frontend
+
+* Native desktop interface
+* Import and export workflows
 * Local SQLite database for caching and metadata
 
 The core logic is UI-agnostic and reusable.
 
-## Desktop import/export workflows
+## Import / Export Workflows
 
-The desktop app exposes a native `Import / Export` center:
+The desktop app exposes a native Import / Export center:
 
-* `Reports` previews graph-scoped CSV exports before saving them through the operating system file dialog.
-* `BIP-329 Labels` previews imports before apply, supports explicit conflict policies, and preserves unsupported records for round-trip export when possible.
-* File selection happens in the frontend, while file reading and writing stays in the Rust/Tauri layer.
+### Reports
+
+* Preview graph-scoped CSV exports before saving through the operating system file dialog
+
+### BIP-329 Labels
+
+* Preview imports before apply
+* Support explicit conflict policies
+* Preserve unsupported records for round-trip export when possible
+
+File selection happens in the frontend, while file reading and writing stay in the Rust / Tauri layer.
 
 ## Project Status
 
-Phase 1: Analysis & Reconstruction
+### Phase 1: Analysis & Reconstruction
 
 * [x] Bitcoin Core RPC connectivity
-* [ ] Transaction inspection
-* [ ] Recursive ancestry tracing
-* [ ] Local label storage
-* [ ] CSV export
+* [x] Transaction inspection
+* [x] Recursive ancestry tracing
+* [x] Local label storage
+* [x] CSV export
 * [ ] Multi-wallet session overlay
-* [ ] Advanced visualization polish
-
-## Non-Goals (Phase 1)
-
-* No transaction signing
-* No PSBT creation
-* No automatic coin selection
-* No Lightning support
-* No cloud sync
-
-Spending assistance and policy guardrails are planned for later phases.
+* [ ] Address search
 
 ## License
 
 MIT License
-
-## Contributing
-
-Contributions are welcome.
-
-If you’re interested in:
-
-* Improving provenance visualization
-* Enhancing BIP-329 compatibility
-* Adding advanced reporting
-* Improving performance on large ancestry graphs
-
-Open an issue or submit a pull request.
