@@ -20,6 +20,14 @@ pub enum ImportDisposition {
     IgnoredUnsupported,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportConflictPolicy {
+    PreferLocal,
+    PreferImport,
+    OnlyNew,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ImportPreviewLine {
     pub line_number: usize,
@@ -101,9 +109,17 @@ pub fn preview_bip329_jsonl(conn: &Connection, input: &str) -> Result<ImportPrev
 }
 
 pub fn import_bip329_jsonl(conn: &Connection, input: &str) -> Result<ImportReport> {
+    import_bip329_jsonl_with_policy(conn, input, ImportConflictPolicy::PreferImport)
+}
+
+pub fn import_bip329_jsonl_with_policy(
+    conn: &Connection,
+    input: &str,
+    policy: ImportConflictPolicy,
+) -> Result<ImportReport> {
     conn.execute_batch("BEGIN;")?;
 
-    let result = apply_import(conn, input);
+    let result = apply_import(conn, input, policy);
 
     match result {
         Ok(report) => {
@@ -117,7 +133,11 @@ pub fn import_bip329_jsonl(conn: &Connection, input: &str) -> Result<ImportRepor
     }
 }
 
-fn apply_import(conn: &Connection, input: &str) -> Result<ImportReport> {
+fn apply_import(
+    conn: &Connection,
+    input: &str,
+    policy: ImportConflictPolicy,
+) -> Result<ImportReport> {
     let evaluation = evaluate_input(conn, input)?;
     let mut report = ImportReport {
         total_lines: evaluation.preview.total_lines,
@@ -128,10 +148,25 @@ fn apply_import(conn: &Connection, input: &str) -> Result<ImportReport> {
         match line.kind {
             EvaluatedKind::ApplySupported => {
                 let record = line.record.expect("apply lines always have a record");
-                bip329_records::upsert_record(conn, &record, &line.raw_json, true)?;
-                if let Some(label) = record.label.as_deref() {
-                    labels::set_label(conn, &record.r#type, &record.r#ref, label)?;
-                    report.imported += 1;
+                let existing_label = labels::get_label(conn, &record.r#type, &record.r#ref)?
+                    .map(|label| label.label);
+                match supported_import_action(&record, existing_label.as_deref(), policy) {
+                    SupportedImportAction::Apply => {
+                        bip329_records::upsert_record(conn, &record, &line.raw_json, true)?;
+                        if let Some(label) = record.label.as_deref() {
+                            labels::set_label(conn, &record.r#type, &record.r#ref, label)?;
+                            report.imported += 1;
+                        }
+                    }
+                    SupportedImportAction::PreserveOnly { tracks_local_label } => {
+                        bip329_records::upsert_record(
+                            conn,
+                            &record,
+                            &line.raw_json,
+                            tracks_local_label,
+                        )?;
+                        report.preserved_only += 1;
+                    }
                 }
             }
             EvaluatedKind::PreserveOnly { tracks_local_label } => {
@@ -156,6 +191,34 @@ fn apply_import(conn: &Connection, input: &str) -> Result<ImportReport> {
     }
 
     Ok(report)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SupportedImportAction {
+    Apply,
+    PreserveOnly { tracks_local_label: bool },
+}
+
+fn supported_import_action(
+    record: &Bip329Record,
+    existing_label: Option<&str>,
+    policy: ImportConflictPolicy,
+) -> SupportedImportAction {
+    let imported_label = record.label.as_deref();
+    match (policy, existing_label, imported_label) {
+        (ImportConflictPolicy::PreferImport, _, _) => SupportedImportAction::Apply,
+        (ImportConflictPolicy::PreferLocal, Some(current), Some(imported))
+            if current != imported =>
+        {
+            SupportedImportAction::PreserveOnly {
+                tracks_local_label: true,
+            }
+        }
+        (ImportConflictPolicy::OnlyNew, Some(_), _) => SupportedImportAction::PreserveOnly {
+            tracks_local_label: false,
+        },
+        _ => SupportedImportAction::Apply,
+    }
 }
 
 struct EvaluationOutput {
@@ -424,7 +487,10 @@ mod tests {
 
     use crate::store::{bip329_records, db::Database, labels};
 
-    use super::{import_bip329_jsonl, preview_bip329_jsonl, ImportDisposition};
+    use super::{
+        import_bip329_jsonl, import_bip329_jsonl_with_policy, preview_bip329_jsonl,
+        ImportConflictPolicy, ImportDisposition,
+    };
 
     const TXID_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const VALID_ADDR: &str = "1BoatSLRHtKNngkdXEeobR76b53LETtpyT";
@@ -593,5 +659,59 @@ mod tests {
             preview.lines[0].disposition,
             ImportDisposition::AmbiguousSupported
         );
+    }
+
+    #[test]
+    fn prefer_local_keeps_existing_label_and_binds_preserved_origin_to_local_state() {
+        let db = Database::open(":memory:").expect("db opens");
+        labels::set_label(db.conn(), "tx", TXID_A, "local").expect("seed label");
+
+        let report = import_bip329_jsonl_with_policy(
+            db.conn(),
+            &format!(
+                r#"{{"type":"tx","ref":"{TXID_A}","label":"imported","origin":"wallet-a","custom":true}}"#
+            ),
+            ImportConflictPolicy::PreferLocal,
+        )
+        .expect("import succeeds");
+
+        assert_eq!(report.imported, 0);
+        assert_eq!(report.preserved_only, 1);
+
+        let tx_label = labels::get_label(db.conn(), "tx", TXID_A)
+            .expect("query succeeds")
+            .expect("local label remains");
+        assert_eq!(tx_label.label, "local");
+
+        let stored =
+            bip329_records::get_records_by_ref(db.conn(), "tx", TXID_A).expect("query succeeds");
+        assert_eq!(stored.len(), 1);
+        assert!(stored[0].tracks_local_label);
+    }
+
+    #[test]
+    fn only_new_preserves_conflicting_supported_record_without_overwriting_local_label() {
+        let db = Database::open(":memory:").expect("db opens");
+        labels::set_label(db.conn(), "tx", TXID_A, "local").expect("seed label");
+
+        let report = import_bip329_jsonl_with_policy(
+            db.conn(),
+            &format!(r#"{{"type":"tx","ref":"{TXID_A}","label":"imported"}}"#),
+            ImportConflictPolicy::OnlyNew,
+        )
+        .expect("import succeeds");
+
+        assert_eq!(report.imported, 0);
+        assert_eq!(report.preserved_only, 1);
+
+        let tx_label = labels::get_label(db.conn(), "tx", TXID_A)
+            .expect("query succeeds")
+            .expect("local label remains");
+        assert_eq!(tx_label.label, "local");
+
+        let stored =
+            bip329_records::get_records_by_ref(db.conn(), "tx", TXID_A).expect("query succeeds");
+        assert_eq!(stored.len(), 1);
+        assert!(!stored[0].tracks_local_label);
     }
 }

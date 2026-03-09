@@ -58,15 +58,16 @@ This is a capital reconstruction tool.
 
 ### BIP-329 Support
 
-* Import wallet label exports
+* Preview wallet label imports before applying them locally
+* Apply editable local state for `tx` and `output` labels
+* Preserve unsupported or ambiguous records for round-trip export when possible
 * Export labels for portability
-* Conflict resolution on import
 
 ### Reporting
 
-* CSV export of labeled transactions
-* CSV export of labeled UTXOs
-* Structured provenance report generation
+* CSV export of the current graph as `transactions`, `outputs`, or `exceptions`
+* Preview row counts, suggested filenames, and data-quality warnings before saving
+* Structured provenance report generation without exporting internal notes
 
 ### Local-First Architecture
 
@@ -114,6 +115,14 @@ This tool is designed to preserve business confidentiality.
 * Local SQLite database for caching and metadata
 
 The core logic is UI-agnostic and reusable.
+
+## Desktop import/export workflows
+
+The desktop app exposes a native `Import / Export` center:
+
+* `Reports` previews graph-scoped CSV exports before saving them through the operating system file dialog.
+* `BIP-329 Labels` previews imports before apply, supports explicit conflict policies, and preserves unsupported records for round-trip export when possible.
+* File selection happens in the frontend, while file reading and writing stays in the Rust/Tauri layer.
 
 ## Project Status
 

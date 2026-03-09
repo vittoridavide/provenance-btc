@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-log": "^2.8.0",
     "dagre": "^0.8.5",
+    "lucide-react": "^0.577.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "reactflow": "^11.11.4"

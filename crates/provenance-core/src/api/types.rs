@@ -3,6 +3,7 @@ use serde_json::Value;
 
 #[cfg(feature = "store-sqlite")]
 pub use crate::bip329::{
+    ImportConflictPolicy as Bip329ImportConflictPolicy,
     ImportDisposition as Bip329ImportDisposition, ImportErrorLine as Bip329ImportErrorLine,
     ImportPreview as Bip329ImportPreviewResponse, ImportPreviewLine as Bip329ImportPreviewLine,
     ImportReport as Bip329ImportApplyResult,
@@ -168,6 +169,7 @@ pub struct Bip329ImportPreviewRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Bip329ImportApplyRequest {
     pub jsonl_contents: String,
+    pub policy: Bip329ImportConflictPolicy,
 }
 
 #[cfg(feature = "store-sqlite")]
@@ -184,9 +186,9 @@ pub struct Bip329ExportResult {
 mod tests {
     #[cfg(feature = "store-sqlite")]
     use super::{
-        Bip329ExportResult, Bip329ImportApplyRequest, Bip329ImportDisposition,
-        Bip329ImportErrorLine, Bip329ImportPreviewLine, Bip329ImportPreviewRequest,
-        Bip329ImportPreviewResponse,
+        Bip329ExportResult, Bip329ImportApplyRequest, Bip329ImportConflictPolicy,
+        Bip329ImportDisposition, Bip329ImportErrorLine, Bip329ImportPreviewLine,
+        Bip329ImportPreviewRequest, Bip329ImportPreviewResponse,
     };
     use super::{
         GraphExportContextRequest, RefType, ReportExportRequest, ReportIssueCode, ReportKind,
@@ -267,6 +269,7 @@ mod tests {
         };
         let apply_request = Bip329ImportApplyRequest {
             jsonl_contents: "{\"type\":\"output\"}\n".to_string(),
+            policy: Bip329ImportConflictPolicy::PreferImport,
         };
         let preview_response = Bip329ImportPreviewResponse {
             total_lines: 1,
@@ -323,6 +326,7 @@ mod tests {
             apply_request_json["jsonl_contents"],
             "{\"type\":\"output\"}\n"
         );
+        assert_eq!(apply_request_json["policy"], "prefer_import");
         assert_eq!(
             preview_response_json["lines"][0]["disposition"],
             "preserve_only"

@@ -1,6 +1,6 @@
 # Provenance Desktop App
 
-A Tauri-based desktop application for Bitcoin provenance analysis.
+A Tauri-based desktop application for local-first Bitcoin provenance analysis.
 
 ## Development
 
@@ -12,18 +12,14 @@ A Tauri-based desktop application for Bitcoin provenance analysis.
 
 ### Bitcoin Core Configuration
 
-The app currently connects to Bitcoin Core RPC at `http://127.0.0.1:8332` with default credentials.
+The app currently connects to Bitcoin Core RPC at `http://127.0.0.1:8332`.
 
-**Temporary Configuration**: The RPC credentials are currently hardcoded in `src-tauri/src/lib.rs`. For development, update the `get_chain_info()` function:
+For local development, provide the RPC settings consumed by `frontend/src/App.tsx`:
 
-```rust
-let config = RpcConfig {
-    url: "http://127.0.0.1:8332".to_string(),
-    auth: RpcAuth::UserPass {
-        username: "your_rpc_username".to_string(),
-        password: "your_rpc_password".to_string(),
-    },
-};
+```bash
+VITE_PROVENANCE_RPC_URL=http://127.0.0.1:8332
+VITE_PROVENANCE_RPC_USER=your_rpc_username
+VITE_PROVENANCE_RPC_PASS=your_rpc_password
 ```
 
 Make sure your `bitcoin.conf` has:
@@ -35,6 +31,22 @@ rpcpassword=your_rpc_password
 ```
 
 **TODO**: Implement proper configuration management via settings UI or config file.
+
+### Import / Export workflows
+
+The desktop UI routes report and BIP-329 actions through a dedicated `Import / Export` center:
+
+- `Reports`
+  - preview `transactions`, `outputs`, or `exceptions` CSV output for the current graph
+  - show row counts, suggested filename, and warning summary before save
+  - save through the native Tauri dialog plugin
+- `BIP-329 Labels`
+  - choose a file with the native open dialog
+  - preview parsed counts, ambiguous supported-record warnings, and invalid lines
+  - apply imports only after explicit confirmation and conflict-policy selection
+  - export editable local labels plus preserved records as JSONL through the native save dialog
+
+File contents are read and written in `src-tauri/src/main.rs`; the frontend only selects paths and manages UI state.
 
 ### Running the App
 
@@ -55,27 +67,20 @@ npm run tauri:dev
 # Build for production
 npm run tauri:build
 ```
-### Phase 4 manual smoke checklist
+### Manual smoke checklist
 
-1. Select a transaction node → detail panel loads.
-2. Save a label → graph and detail update.
-3. Delete a label → graph and detail update.
-4. Save a classification → warning removed, graph updates.
-5. Invalid metadata is blocked.
-6. No console errors.
+1. Open `Import / Export` from the top bar.
+2. In `Reports`, preview each report kind and confirm save stays disabled when preview returns zero rows.
+3. Save a report through the native dialog and confirm the success message shows the final path.
+4. In `BIP-329 Labels`, preview an import before applying it and verify ambiguous or invalid records are surfaced.
+5. Apply a label import and confirm graph and detail state refresh immediately.
+6. Export labels through the native dialog and confirm export works even without a loaded graph.
 
-## Features
+## Current status
 
-- Real-time Bitcoin chain status display
-- Shows network type (mainnet/testnet/regtest/signet)
-- Block height and sync progress
-- Auto-refreshes every 10 seconds
+The desktop app now includes:
 
-## Current Status
-
-This is a minimal implementation showing chain information. Future features will include:
-- Transaction inspection
-- Provenance graph visualization
-- Label management
-- BIP-329 import/export
-- Reporting tools
+- transaction graph inspection and detail views
+- local label and classification editing
+- native-dialog CSV reporting for the current graph
+- staged BIP-329 import/export workflows for label portability

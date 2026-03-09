@@ -19,6 +19,7 @@ type DetailPanelProps = {
   selectedTxid: string | null
   collapsed?: boolean
   onGraphRefresh?: () => Promise<void>
+  onRegisterRefresh?: (refresh: (() => Promise<void>) | null) => void
   onDeselect?: () => void
   onToggle?: () => void
 }
@@ -301,7 +302,14 @@ function CollapseDetailIcon() {
   )
 }
 
-function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDeselect, onToggle }: DetailPanelProps) {
+function DetailPanel({
+  selectedTxid,
+  collapsed = false,
+  onGraphRefresh,
+  onRegisterRefresh,
+  onDeselect,
+  onToggle,
+}: DetailPanelProps) {
   const auditMode = useSyncExternalStore(
     subscribeGraphControls,
     getAuditModeSnapshot,
@@ -351,6 +359,18 @@ function DetailPanel({ selectedTxid, collapsed = false, onGraphRefresh, onDesele
   useEffect(() => {
     activeTxidRef.current = activeTxid
   }, [activeTxid])
+
+  useEffect(() => {
+    if (!onRegisterRefresh) return
+
+    onRegisterRefresh(async () => {
+      await reload({ txid: activeTxidRef.current, throwOnError: true })
+    })
+
+    return () => {
+      onRegisterRefresh(null)
+    }
+  }, [onRegisterRefresh, reload])
 
   useEffect(() => {
     if (!loadedDetail) {

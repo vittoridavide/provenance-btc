@@ -32,16 +32,14 @@ type TopBarTestPropsOverrides = Partial<ComponentProps<typeof TopBar>>
 function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
   const onSearchTxid = vi.fn()
   const onExportGraphJson = vi.fn()
-  const onExportLabels = vi.fn()
-  const onImportLabels = vi.fn().mockResolvedValue(undefined)
+  const onOpenImportExport = vi.fn()
 
   const result = render(
     <TopBar
       rootTxid={VALID_TXID}
       onSearchTxid={onSearchTxid}
       onExportGraphJson={onExportGraphJson}
-      onExportLabels={onExportLabels}
-      onImportLabels={onImportLabels}
+      onOpenImportExport={onOpenImportExport}
       {...overrides}
     />,
   )
@@ -50,8 +48,7 @@ function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
     ...result,
     onSearchTxid,
     onExportGraphJson,
-    onExportLabels,
-    onImportLabels,
+    onOpenImportExport,
   }
 }
 
@@ -65,19 +62,14 @@ afterEach(() => {
 
 describe('TopBar', () => {
   it('wires top-bar action buttons to explicit callbacks', async () => {
-    const { container, onExportGraphJson, onExportLabels, onImportLabels } = renderTopBar()
+    const { onExportGraphJson, onOpenImportExport } = renderTopBar()
     const user = userEvent.setup()
 
     await user.click(screen.getByRole('button', { name: 'Export graph JSON' }))
-    await user.click(screen.getByRole('button', { name: 'Export labels' }))
-
-    const fileInput = container.querySelector('input[type="file"]')
-    expect(fileInput).toBeInstanceOf(HTMLInputElement)
-    await user.upload(fileInput as HTMLInputElement, new File(['{}'], 'labels.jsonl'))
+    await user.click(screen.getByRole('button', { name: 'Import / Export' }))
 
     expect(onExportGraphJson).toHaveBeenCalledTimes(1)
-    expect(onExportLabels).toHaveBeenCalledTimes(1)
-    expect(onImportLabels).toHaveBeenCalledTimes(1)
+    expect(onOpenImportExport).toHaveBeenCalledTimes(1)
   })
 
   it('disables graph-dependent actions when graph state is unavailable', () => {
@@ -90,8 +82,7 @@ describe('TopBar', () => {
     renderTopBar()
 
     expect(screen.getByRole('button', { name: 'Export graph JSON' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Export labels' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Import labels' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Import / Export' })).toBeEnabled()
   })
 
   it('submits a valid txid on Enter', async () => {

@@ -19,6 +19,8 @@ export interface Classification {
   tax_relevant: boolean
 }
 
+export type Bip329ImportConflictPolicy = 'prefer_local' | 'prefer_import' | 'only_new'
+
 export interface GraphNode {
   txid: string
   status: TxStatus
@@ -171,6 +173,12 @@ export interface ReportExportResult {
   csv_contents: string
 }
 
+export interface ReportFileExportResult {
+  output_path: string
+  manifest: ReportManifest
+  warnings: ReportWarning[]
+}
+
 export type Bip329ImportDisposition =
   | 'apply_supported'
   | 'preserve_only'
@@ -203,6 +211,7 @@ export interface Bip329ImportPreviewResponse {
 
 export interface Bip329ImportApplyRequest {
   jsonl_contents: string
+  policy: Bip329ImportConflictPolicy
 }
 
 export interface Bip329ImportErrorLine {

@@ -50,7 +50,7 @@ pub fn apply_bip329_import(
     conn: &Connection,
     request: &types::Bip329ImportApplyRequest,
 ) -> Result<types::Bip329ImportApplyResult> {
-    crate::bip329::import_bip329_jsonl(conn, &request.jsonl_contents)
+    crate::bip329::import_bip329_jsonl_with_policy(conn, &request.jsonl_contents, request.policy)
 }
 
 #[cfg(feature = "store-sqlite")]

@@ -1,10 +1,17 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use provenance_core::api::types::{
-    Classification, GraphBuildOptions, ImportSummary, ProvenanceGraph, RefType, TransactionDetail,
+    Bip329ExportResult, Bip329ImportApplyRequest, Bip329ImportApplyResult,
+    Bip329ImportConflictPolicy, Bip329ImportPreviewRequest, Bip329ImportPreviewResponse,
+    Classification, GraphBuildOptions, ProvenanceGraph, RefType, ReportExportRequest,
+    ReportManifest, ReportPreviewRequest, ReportPreviewResponse, ReportWarning, TransactionDetail,
     TxInput, TxOutput,
 };
-use provenance_core::bip329::{export_bip329_jsonl, import_bip329_jsonl};
+use provenance_core::api::{
+    apply_bip329_import as core_apply_bip329_import, export_bip329 as core_export_bip329,
+    export_report as core_export_report, preview_bip329_import as core_preview_bip329_import,
+    preview_report as core_preview_report,
+};
 
 use provenance_core::model::tx_view::TxView;
 use provenance_core::reporting::{build_graph_export_context, GraphExportContextRequest};
@@ -14,6 +21,7 @@ use provenance_core::store::classifications;
 use provenance_core::store::db::Database;
 use provenance_core::store::labels;
 use std::env;
+use std::fs;
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
@@ -27,6 +35,39 @@ struct SetRpcConfigArgs {
     url: String,
     username: Option<String>,
     password: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportLabelsArgs {
+    output_path: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportLabelsArgs {
+    input_path: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplyLabelsImportArgs {
+    input_path: String,
+    policy: Bip329ImportConflictPolicy,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportReportArgs {
+    request: ReportExportRequest,
+    output_path: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ReportFileExportResult {
+    output_path: String,
+    manifest: ReportManifest,
+    warnings: Vec<ReportWarning>,
 }
 
 #[tauri::command]
@@ -64,6 +105,14 @@ fn get_rpc_config(state: &tauri::State<'_, AppState>) -> Result<RpcConfig, Strin
 
 fn open_db(path: &str) -> Result<Database, String> {
     Database::open(path).map_err(|e| format!("Failed to open DB at '{path}': {e}"))
+}
+
+fn read_text_file(path: &str, purpose: &str) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| format!("Failed to read {purpose} file '{path}': {e}"))
+}
+
+fn write_text_file(path: &str, contents: &str, purpose: &str) -> Result<(), String> {
+    fs::write(path, contents).map_err(|e| format!("Failed to write {purpose} to '{path}': {e}"))
 }
 
 #[tauri::command]
@@ -282,36 +331,112 @@ async fn cmd_set_classification(
 }
 
 #[tauri::command]
-async fn cmd_export_labels(state: tauri::State<'_, AppState>) -> Result<String, String> {
+async fn cmd_preview_labels_export(
+    state: tauri::State<'_, AppState>,
+) -> Result<Bip329ExportResult, String> {
     let db_path = (*state.db_path).clone();
     tauri::async_runtime::spawn_blocking(move || {
         let db = open_db(&db_path)?;
-        export_bip329_jsonl(db.conn()).map_err(|e| e.to_string())
+        core_export_bip329(db.conn()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-async fn cmd_import_labels(
+async fn cmd_export_labels(
     state: tauri::State<'_, AppState>,
-    jsonl: String,
-) -> Result<ImportSummary, String> {
+    args: ExportLabelsArgs,
+) -> Result<String, String> {
     let db_path = (*state.db_path).clone();
+    let output_path = args.output_path;
     tauri::async_runtime::spawn_blocking(move || {
         let db = open_db(&db_path)?;
-        let report = import_bip329_jsonl(db.conn(), &jsonl).map_err(|e| e.to_string())?;
+        let export = core_export_bip329(db.conn()).map_err(|e| e.to_string())?;
+        write_text_file(&output_path, &export.jsonl_contents, "labels export")?;
+        Ok(output_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-        let errors = report
-            .errors
-            .into_iter()
-            .map(|e| format!("line {}: {}", e.line_number, e.message))
-            .collect::<Vec<_>>();
+#[tauri::command]
+async fn cmd_preview_labels_import(
+    state: tauri::State<'_, AppState>,
+    args: ImportLabelsArgs,
+) -> Result<Bip329ImportPreviewResponse, String> {
+    let db_path = (*state.db_path).clone();
+    let input_path = args.input_path;
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = open_db(&db_path)?;
+        let jsonl = read_text_file(&input_path, "labels import")?;
+        let request = Bip329ImportPreviewRequest {
+            jsonl_contents: jsonl,
+        };
+        core_preview_bip329_import(db.conn(), &request).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-        Ok(ImportSummary {
-            imported: report.imported as u32,
-            skipped: (report.skipped_invalid + report.skipped_unsupported_type) as u32,
-            errors,
+#[tauri::command]
+async fn cmd_apply_labels_import(
+    state: tauri::State<'_, AppState>,
+    args: ApplyLabelsImportArgs,
+) -> Result<Bip329ImportApplyResult, String> {
+    let db_path = (*state.db_path).clone();
+    let input_path = args.input_path;
+    let policy = args.policy;
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = open_db(&db_path)?;
+        let jsonl = read_text_file(&input_path, "labels import")?;
+        let request = Bip329ImportApplyRequest {
+            jsonl_contents: jsonl,
+            policy,
+        };
+        core_apply_bip329_import(db.conn(), &request).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn cmd_preview_report(
+    state: tauri::State<'_, AppState>,
+    args: ReportPreviewRequest,
+) -> Result<ReportPreviewResponse, String> {
+    let cfg = get_rpc_config(&state)?;
+    let db_path = (*state.db_path).clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
+        let db = open_db(&db_path)?;
+        core_preview_report(&rpc, db.conn(), &args).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn cmd_export_report(
+    state: tauri::State<'_, AppState>,
+    args: ExportReportArgs,
+) -> Result<ReportFileExportResult, String> {
+    let cfg = get_rpc_config(&state)?;
+    let db_path = (*state.db_path).clone();
+    let request = args.request;
+    let output_path = args.output_path;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
+        let db = open_db(&db_path)?;
+        let generated = core_export_report(&rpc, db.conn(), &request).map_err(|e| e.to_string())?;
+        write_text_file(&output_path, &generated.csv_contents, "report export")?;
+
+        Ok(ReportFileExportResult {
+            output_path,
+            manifest: generated.manifest,
+            warnings: generated.warnings,
         })
     })
     .await
@@ -342,6 +467,7 @@ fn main() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             cmd_set_rpc_config,
@@ -353,10 +479,65 @@ fn main() {
             cmd_delete_label,
             cmd_set_classification,
             cmd_delete_classification,
+            cmd_preview_labels_export,
             cmd_export_labels,
-            cmd_import_labels,
+            cmd_preview_labels_import,
+            cmd_apply_labels_import,
+            cmd_preview_report,
+            cmd_export_report,
             cmd_export_graph_json
         ])
         .run(tauri::generate_context!())
         .expect("error running Tauri");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{read_text_file, write_text_file};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_path(file_name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before epoch")
+            .as_nanos();
+        let mut path = std::env::temp_dir();
+        path.push(format!("provenance-desktop-tests-{nanos}"));
+        path.push(file_name);
+        path
+    }
+
+    #[test]
+    fn read_text_file_reports_path_and_purpose_on_failure() {
+        let missing_path = unique_temp_path("missing.jsonl");
+        let missing_path_string = missing_path.to_string_lossy().to_string();
+
+        let error = read_text_file(&missing_path_string, "labels import").expect_err("read fails");
+
+        assert!(error.contains("Failed to read labels import file"));
+        assert!(error.contains(&missing_path_string));
+    }
+
+    #[test]
+    fn write_text_file_round_trips_contents() {
+        let output_path = unique_temp_path("round-trip.csv");
+        let output_dir = output_path
+            .parent()
+            .expect("temp output path has parent")
+            .to_path_buf();
+        fs::create_dir_all(&output_dir).expect("create temp test dir");
+        let output_path_string = output_path.to_string_lossy().to_string();
+
+        write_text_file(&output_path_string, "txid\nabc\n", "report export")
+            .expect("write succeeds");
+        let contents =
+            fs::read_to_string(&output_path).expect("written file should be readable afterwards");
+
+        assert_eq!(contents, "txid\nabc\n");
+
+        fs::remove_file(&output_path).expect("cleanup file");
+        fs::remove_dir_all(&output_dir).expect("cleanup directory");
+    }
 }

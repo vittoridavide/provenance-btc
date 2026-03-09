@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { FormEvent } from 'react'
 import {
   getGraphControlsSnapshot,
   subscribeGraphControls,
@@ -21,16 +21,14 @@ type TopBarProps = {
   rootTxid: string
   onSearchTxid: (txid: string) => void
   onExportGraphJson: () => Promise<void> | void
-  onExportLabels: () => Promise<void> | void
-  onImportLabels: (file: File) => Promise<void> | void
+  onOpenImportExport: () => void
 }
 
 function TopBar({
   rootTxid,
   onSearchTxid,
   onExportGraphJson,
-  onExportLabels,
-  onImportLabels,
+  onOpenImportExport,
 }: TopBarProps) {
   const { canControl, isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
@@ -38,9 +36,7 @@ function TopBar({
     getGraphControlsSnapshot,
   )
   const [searchInput, setSearchInput] = useState(rootTxid)
-  const [isImportingLabels, setIsImportingLabels] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const actionsDisabled = isGraphLoading || !canControl
+  const graphActionDisabled = isGraphLoading || !canControl
 
   useEffect(() => {
     setSearchInput(rootTxid)
@@ -54,21 +50,6 @@ function TopBar({
     onSearchTxid(normalized)
   }
 
-  async function handleImportLabelsChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) {
-      return
-    }
-
-    setIsImportingLabels(true)
-
-    try {
-      await onImportLabels(file)
-    } finally {
-      setIsImportingLabels(false)
-      event.target.value = ''
-    }
-  }
 
   return (
     <header className="top-bar">
@@ -98,33 +79,17 @@ function TopBar({
           type="button"
           className="top-bar__button control-button"
           onClick={() => void onExportGraphJson()}
-          disabled={actionsDisabled}
+          disabled={graphActionDisabled}
         >
           Export graph JSON
         </button>
         <button
           type="button"
           className="top-bar__button control-button"
-          onClick={() => void onExportLabels()}
-          disabled={actionsDisabled}
+          onClick={onOpenImportExport}
         >
-          Export labels
+          Import / Export
         </button>
-        <button
-          type="button"
-          className="top-bar__button control-button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={actionsDisabled || isImportingLabels}
-        >
-          {isImportingLabels ? 'Importing…' : 'Import labels'}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".jsonl,.ndjson,text/plain,application/x-ndjson"
-          onChange={(event) => void handleImportLabelsChange(event)}
-          style={{ display: 'none' }}
-        />
       </div>
     </header>
   )

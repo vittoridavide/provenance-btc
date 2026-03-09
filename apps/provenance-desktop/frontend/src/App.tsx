@@ -3,9 +3,21 @@ import { invoke } from '@tauri-apps/api/core'
 import './App.css'
 import DetailPanel from './components/DetailPanel'
 import GraphCanvas, { type GraphCanvasTopBarActions } from './components/GraphCanvas'
+import ImportExportCenter from './components/import-export/ImportExportCenter'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
-import type { ImportSummary, ProvenanceGraph, ProvenanceSetup } from './types/api'
+import type {
+  Bip329ExportResult,
+  Bip329ImportApplyResult,
+  Bip329ImportConflictPolicy,
+  Bip329ImportPreviewResponse,
+  ProvenanceGraph,
+  ProvenanceSetup,
+  ReportExportRequest,
+  ReportFileExportResult,
+  ReportPreviewRequest,
+  ReportPreviewResponse,
+} from './types/api'
 const DEFAULT_ROOT_TXID = import.meta.env.VITE_PROVENANCE_GRAPH_ROOT_TXID ?? ''
 const COMPACT_LAYOUT_MAX_WIDTH = 1400
 const SIDEBAR_COLLAPSE_MAX_WIDTH = 1200
@@ -111,8 +123,10 @@ function App() {
   const [graphReloadKey, setGraphReloadKey] = useState(0)
   const [selectedTxid, setSelectedTxid] = useState<string | null>(null)
   const [graphData, setGraphData] = useState<ProvenanceGraph | null>(null)
+  const [isImportExportOpen, setIsImportExportOpen] = useState(false)
   const graphViewActionsRef = useRef<GraphCanvasTopBarActions | null>(null)
   const graphRefreshRef = useRef<(() => Promise<void>) | null>(null)
+  const detailRefreshRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
     function handleResize() {
@@ -185,6 +199,9 @@ function App() {
   const handleRegisterGraphRefresh = useCallback((refresh: (() => Promise<void>) | null) => {
     graphRefreshRef.current = refresh
   }, [])
+  const handleRegisterDetailRefresh = useCallback((refresh: (() => Promise<void>) | null) => {
+    detailRefreshRef.current = refresh
+  }, [])
   const handleGraphRefresh = useCallback(async () => {
     if (graphRefreshRef.current) {
       await graphRefreshRef.current()
@@ -193,6 +210,12 @@ function App() {
 
     setGraphReloadKey((current) => current + 1)
   }, [])
+  const handleWorkspaceRefresh = useCallback(async () => {
+    await handleGraphRefresh()
+    if (detailRefreshRef.current) {
+      await detailRefreshRef.current()
+    }
+  }, [handleGraphRefresh])
   const handleExportGraphJson = useCallback(async () => {
     if (!graphData || graphData.nodes.length === 0) {
       return
@@ -209,26 +232,77 @@ function App() {
       console.error(`Failed to export graph JSON: ${toErrorMessage(error)}`)
     }
   }, [graphData, rootTxid])
-  const handleExportLabels = useCallback(async () => {
+  const handlePreviewLabelExport = useCallback(async () => {
     try {
-      const labelsJsonl = await invoke<string>('cmd_export_labels')
-      const fileName = `provenance-labels-${formatFileTimestamp()}.jsonl`
-      downloadTextFile(fileName, labelsJsonl, 'application/x-ndjson')
+      return await invoke<Bip329ExportResult>('cmd_preview_labels_export')
     } catch (error) {
-      console.error(`Failed to export labels: ${toErrorMessage(error)}`)
+      console.error(`Failed to preview label export: ${toErrorMessage(error)}`)
+      throw error
     }
   }, [])
-  const handleImportLabels = useCallback(
-    async (file: File) => {
+  const handleExportLabels = useCallback(async (outputPath: string) => {
+    try {
+      const savedPath = await invoke<string>('cmd_export_labels', {
+        args: {
+          outputPath,
+        },
+      })
+      return savedPath
+    } catch (error) {
+      console.error(`Failed to export labels: ${toErrorMessage(error)}`)
+      throw error
+    }
+  }, [])
+  const handlePreviewLabelImport = useCallback(async (inputPath: string) => {
+    try {
+      return await invoke<Bip329ImportPreviewResponse>('cmd_preview_labels_import', {
+        args: { inputPath },
+      })
+    } catch (error) {
+      console.error(`Failed to preview label import: ${toErrorMessage(error)}`)
+      throw error
+    }
+  }, [])
+  const handleApplyLabelImport = useCallback(
+    async (inputPath: string, policy: Bip329ImportConflictPolicy) => {
       try {
-        const jsonl = await file.text()
-        await invoke<ImportSummary>('cmd_import_labels', { jsonl })
-        await handleGraphRefresh()
+        const result = await invoke<Bip329ImportApplyResult>('cmd_apply_labels_import', {
+          args: { inputPath, policy },
+        })
+        await handleWorkspaceRefresh()
+        return result
       } catch (error) {
-        console.error(`Failed to import labels: ${toErrorMessage(error)}`)
+        console.error(`Failed to apply label import: ${toErrorMessage(error)}`)
+        throw error
       }
     },
-    [handleGraphRefresh],
+    [handleWorkspaceRefresh],
+  )
+  const handlePreviewReport = useCallback(async (request: ReportPreviewRequest) => {
+    try {
+      return await invoke<ReportPreviewResponse>('cmd_preview_report', {
+        args: request,
+      })
+    } catch (error) {
+      console.error(`Failed to preview report: ${toErrorMessage(error)}`)
+      throw error
+    }
+  }, [])
+  const handleExportReport = useCallback(
+    async (request: ReportExportRequest, outputPath: string) => {
+      try {
+        return await invoke<ReportFileExportResult>('cmd_export_report', {
+          args: {
+            request,
+            outputPath,
+          },
+        })
+      } catch (error) {
+        console.error(`Failed to export report: ${toErrorMessage(error)}`)
+        throw error
+      }
+    },
+    [],
   )
   return (
     <div className="app-shell">
@@ -236,8 +310,7 @@ function App() {
         rootTxid={rootTxid}
         onSearchTxid={handleSearchTxid}
         onExportGraphJson={handleExportGraphJson}
-        onExportLabels={handleExportLabels}
-        onImportLabels={handleImportLabels}
+        onOpenImportExport={() => setIsImportExportOpen(true)}
       />
       <div className="content-row">
         <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} onToggle={handleToggleSidebar} />
@@ -257,6 +330,7 @@ function App() {
                 selectedTxid={selectedTxid}
                 collapsed={detailCollapsed}
                 onGraphRefresh={handleGraphRefresh}
+                onRegisterRefresh={handleRegisterDetailRefresh}
                 onDeselect={() => setSelectedTxid(null)}
                 onToggle={handleToggleDetail}
               />
@@ -264,6 +338,17 @@ function App() {
           </div>
         </div>
       </div>
+      <ImportExportCenter
+        isOpen={isImportExportOpen}
+        onClose={() => setIsImportExportOpen(false)}
+        rootTxid={rootTxid}
+        onPreviewReport={handlePreviewReport}
+        onExportReport={handleExportReport}
+        onPreviewLabelImport={handlePreviewLabelImport}
+        onApplyLabelImport={handleApplyLabelImport}
+        onPreviewLabelExport={handlePreviewLabelExport}
+        onExportLabels={handleExportLabels}
+      />
     </div>
   )
 }
