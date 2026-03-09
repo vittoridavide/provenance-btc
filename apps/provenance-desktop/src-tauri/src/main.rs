@@ -22,22 +22,120 @@ use provenance_core::store::db::Database;
 use provenance_core::store::labels;
 use std::env;
 use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+use tauri::Manager;
+
+const RPC_PREFILL_SCHEMA_VERSION: u32 = 1;
+const RPC_PREFILL_FILE_NAME: &str = "rpc_config_prefill.json";
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SetRpcConfigArgs {
     url: String,
-    auth_mode: Option<SetRpcAuthMode>,
+    auth_mode: Option<RpcAuthMode>,
     username: Option<String>,
     password: Option<String>,
 }
-
-#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
-enum SetRpcAuthMode {
+enum RpcAuthMode {
     None,
     UserPass,
+}
+impl RpcAuthMode {
+    fn as_storage_str(self) -> &'static str {
+        match self {
+            RpcAuthMode::None => "none",
+            RpcAuthMode::UserPass => "userpass",
+        }
+    }
+
+    fn from_storage_str(value: Option<&str>) -> Self {
+        match value.map(|v| v.trim().to_ascii_lowercase()) {
+            Some(mode) if mode == "userpass" => RpcAuthMode::UserPass,
+            _ => RpcAuthMode::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RpcConfigPrefill {
+    schema_version: u32,
+    url: String,
+    auth_mode: RpcAuthMode,
+    username: Option<String>,
+}
+
+impl Default for RpcConfigPrefill {
+    fn default() -> Self {
+        Self {
+            schema_version: RPC_PREFILL_SCHEMA_VERSION,
+            url: String::new(),
+            auth_mode: RpcAuthMode::None,
+            username: None,
+        }
+    }
+}
+
+impl RpcConfigPrefill {
+    fn from_rpc_config(cfg: &RpcConfig) -> Self {
+        match &cfg.auth {
+            RpcAuth::None | RpcAuth::CookieFile { .. } => Self {
+                schema_version: RPC_PREFILL_SCHEMA_VERSION,
+                url: cfg.url.clone(),
+                auth_mode: RpcAuthMode::None,
+                username: None,
+            },
+            RpcAuth::UserPass { username, .. } => Self {
+                schema_version: RPC_PREFILL_SCHEMA_VERSION,
+                url: cfg.url.clone(),
+                auth_mode: RpcAuthMode::UserPass,
+                username: Some(username.clone()),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredRpcConfigPrefill {
+    #[serde(default = "default_rpc_prefill_schema_version")]
+    schema_version: u32,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    auth_mode: Option<String>,
+    #[serde(default)]
+    username: Option<String>,
+}
+
+fn default_rpc_prefill_schema_version() -> u32 {
+    RPC_PREFILL_SCHEMA_VERSION
+}
+
+impl From<&RpcConfigPrefill> for StoredRpcConfigPrefill {
+    fn from(value: &RpcConfigPrefill) -> Self {
+        Self {
+            schema_version: value.schema_version,
+            url: value.url.clone(),
+            auth_mode: Some(value.auth_mode.as_storage_str().to_string()),
+            username: normalize_optional_non_empty(value.username.clone()),
+        }
+    }
+}
+
+impl StoredRpcConfigPrefill {
+    fn into_runtime_prefill(self) -> RpcConfigPrefill {
+        RpcConfigPrefill {
+            schema_version: self.schema_version,
+            url: self.url,
+            auth_mode: RpcAuthMode::from_storage_str(self.auth_mode.as_deref()),
+            username: normalize_optional_non_empty(self.username),
+        }
+    }
 }
 
 fn normalize_optional_non_empty(value: Option<String>) -> Option<String> {
@@ -45,7 +143,7 @@ fn normalize_optional_non_empty(value: Option<String>) -> Option<String> {
 }
 
 fn parse_rpc_auth(
-    auth_mode: Option<SetRpcAuthMode>,
+    auth_mode: Option<RpcAuthMode>,
     username: Option<String>,
     password: Option<String>,
 ) -> Result<RpcAuth, String> {
@@ -54,14 +152,14 @@ fn parse_rpc_auth(
 
     let mode = auth_mode.or_else(|| {
         if username.is_some() || password.is_some() {
-            Some(SetRpcAuthMode::UserPass)
+            Some(RpcAuthMode::UserPass)
         } else {
             None
         }
     });
 
     match mode {
-        Some(SetRpcAuthMode::None) => {
+        Some(RpcAuthMode::None) => {
             if username.is_some() || password.is_some() {
                 return Err(
                     "RPC auth mode 'none' does not accept username/password. Remove credentials or use authMode 'userpass'."
@@ -70,7 +168,7 @@ fn parse_rpc_auth(
             }
             Ok(RpcAuth::None)
         }
-        Some(SetRpcAuthMode::UserPass) => match (username, password) {
+        Some(RpcAuthMode::UserPass) => match (username, password) {
             (Some(username), Some(password)) => Ok(RpcAuth::UserPass { username, password }),
             (None, None) => {
                 Err("RPC auth mode 'userpass' requires both username and password.".into())
@@ -89,6 +187,7 @@ fn parse_rpc_auth(
 struct AppState {
     rpc_config: Arc<RwLock<Option<RpcConfig>>>,
     db_path: Arc<String>,
+    rpc_prefill_path: Arc<PathBuf>,
 }
 
 #[derive(serde::Deserialize)]
@@ -137,9 +236,18 @@ fn cmd_set_rpc_config(
     };
     // Validate RPC immediately.
     CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
+    let prefill = RpcConfigPrefill::from_rpc_config(&cfg);
+    save_rpc_config_prefill(state.rpc_prefill_path.as_ref().as_path(), &prefill)?;
 
     *state.rpc_config.write().unwrap() = Some(cfg);
     Ok(())
+}
+
+#[tauri::command]
+fn cmd_get_rpc_config_prefill(
+    state: tauri::State<'_, AppState>,
+) -> Result<RpcConfigPrefill, String> {
+    load_rpc_config_prefill(state.rpc_prefill_path.as_ref().as_path())
 }
 fn get_rpc_config(state: &tauri::State<'_, AppState>) -> Result<RpcConfig, String> {
     state
@@ -160,6 +268,45 @@ fn read_text_file(path: &str, purpose: &str) -> Result<String, String> {
 
 fn write_text_file(path: &str, contents: &str, purpose: &str) -> Result<(), String> {
     fs::write(path, contents).map_err(|e| format!("Failed to write {purpose} to '{path}': {e}"))
+}
+
+fn save_rpc_config_prefill(path: &Path, prefill: &RpcConfigPrefill) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create RPC prefill directory '{}': {e}",
+                parent.display()
+            )
+        })?;
+    }
+
+    let stored_prefill = StoredRpcConfigPrefill::from(prefill);
+    let serialized = serde_json::to_string_pretty(&stored_prefill).map_err(|e| {
+        format!(
+            "Failed to serialize RPC prefill data for '{}': {e}",
+            path.display()
+        )
+    })?;
+
+    fs::write(path, serialized)
+        .map_err(|e| format!("Failed to write RPC prefill file '{}': {e}", path.display()))
+}
+
+fn load_rpc_config_prefill(path: &Path) -> Result<RpcConfigPrefill, String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => {
+            let stored_prefill: StoredRpcConfigPrefill =
+                serde_json::from_str(&contents).map_err(|e| {
+                    format!("Failed to parse RPC prefill file '{}': {e}", path.display())
+                })?;
+            Ok(stored_prefill.into_runtime_prefill())
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(RpcConfigPrefill::default()),
+        Err(e) => Err(format!(
+            "Failed to read RPC prefill file '{}': {e}",
+            path.display()
+        )),
+    }
 }
 
 #[tauri::command]
@@ -508,16 +655,32 @@ fn main() {
     let db_path =
         env::var("PROVENANCE_DB_PATH").unwrap_or_else(|_| "provenance.sqlite3".to_string());
     let _ = Database::open(&db_path);
-    let state = AppState {
-        rpc_config: Arc::new(RwLock::new(None)),
-        db_path: Arc::new(db_path),
-    };
+    let rpc_config = Arc::new(RwLock::new(None));
+    let db_path = Arc::new(db_path);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(state)
+        .setup({
+            let rpc_config = Arc::clone(&rpc_config);
+            let db_path = Arc::clone(&db_path);
+            move |app| {
+                let app_config_dir = app.path().app_config_dir().map_err(|e| {
+                    std::io::Error::other(format!(
+                        "Failed to resolve app config directory for RPC prefill: {e}"
+                    ))
+                })?;
+                let state = AppState {
+                    rpc_config: Arc::clone(&rpc_config),
+                    db_path: Arc::clone(&db_path),
+                    rpc_prefill_path: Arc::new(app_config_dir.join(RPC_PREFILL_FILE_NAME)),
+                };
+                app.manage(state);
+                Ok(())
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             cmd_set_rpc_config,
+            cmd_get_rpc_config_prefill,
             cmd_core_status,
             cmd_fetch_tx,
             cmd_build_graph,
@@ -540,7 +703,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_rpc_auth, read_text_file, write_text_file, SetRpcAuthMode};
+    use super::{
+        load_rpc_config_prefill, parse_rpc_auth, read_text_file, save_rpc_config_prefill,
+        write_text_file, RpcAuthMode, RpcConfigPrefill,
+    };
     use provenance_core::rpc::client::RpcAuth;
     use std::fs;
     use std::path::PathBuf;
@@ -591,7 +757,7 @@ mod tests {
 
     #[test]
     fn parse_rpc_auth_accepts_none_mode_without_credentials() {
-        let auth = parse_rpc_auth(Some(SetRpcAuthMode::None), None, None)
+        let auth = parse_rpc_auth(Some(RpcAuthMode::None), None, None)
             .expect("none mode should not require credentials");
         assert!(matches!(auth, RpcAuth::None));
     }
@@ -599,7 +765,7 @@ mod tests {
     #[test]
     fn parse_rpc_auth_rejects_credentials_in_none_mode() {
         let err = parse_rpc_auth(
-            Some(SetRpcAuthMode::None),
+            Some(RpcAuthMode::None),
             Some("alice".to_string()),
             Some("secret".to_string()),
         )
@@ -611,12 +777,8 @@ mod tests {
 
     #[test]
     fn parse_rpc_auth_requires_mode_specific_userpass_fields() {
-        let err = parse_rpc_auth(
-            Some(SetRpcAuthMode::UserPass),
-            Some("alice".to_string()),
-            None,
-        )
-        .expect_err("userpass mode should require password");
+        let err = parse_rpc_auth(Some(RpcAuthMode::UserPass), Some("alice".to_string()), None)
+            .expect_err("userpass mode should require password");
 
         assert!(err.contains("mode 'userpass'"));
         assert!(err.contains("missing password"));
@@ -634,5 +796,41 @@ mod tests {
             }
             _ => panic!("expected userpass auth"),
         }
+    }
+
+    #[test]
+    fn rpc_prefill_save_and_load_round_trip_excludes_password_field() {
+        let prefill_path = unique_temp_path("rpc-prefill.json");
+        let prefill_dir = prefill_path
+            .parent()
+            .expect("prefill path has parent")
+            .to_path_buf();
+        fs::create_dir_all(&prefill_dir).expect("create temp prefill dir");
+        let prefill = RpcConfigPrefill {
+            schema_version: 1,
+            url: "http://127.0.0.1:8332".to_string(),
+            auth_mode: RpcAuthMode::UserPass,
+            username: Some("alice".to_string()),
+        };
+
+        save_rpc_config_prefill(&prefill_path, &prefill).expect("save prefill should succeed");
+        let loaded = load_rpc_config_prefill(&prefill_path).expect("load prefill should succeed");
+
+        assert_eq!(loaded, prefill);
+        let raw_file = fs::read_to_string(&prefill_path).expect("prefill file should be readable");
+        assert!(!raw_file.contains("password"));
+
+        fs::remove_file(&prefill_path).expect("cleanup prefill file");
+        fs::remove_dir_all(&prefill_dir).expect("cleanup prefill directory");
+    }
+
+    #[test]
+    fn rpc_prefill_load_returns_default_when_file_is_missing() {
+        let missing_prefill_path = unique_temp_path("missing-prefill.json");
+
+        let loaded = load_rpc_config_prefill(&missing_prefill_path)
+            .expect("missing prefill should return default payload");
+
+        assert_eq!(loaded, RpcConfigPrefill::default());
     }
 }
