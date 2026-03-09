@@ -4,6 +4,7 @@ import './App.css'
 import DetailPanel from './components/DetailPanel'
 import GraphCanvas, { type GraphCanvasTopBarActions } from './components/GraphCanvas'
 import ImportExportCenter from './components/import-export/ImportExportCenter'
+import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import type {
@@ -12,7 +13,6 @@ import type {
   Bip329ImportConflictPolicy,
   Bip329ImportPreviewResponse,
   ProvenanceGraph,
-  ProvenanceSetup,
   ReportExportRequest,
   ReportFileExportResult,
   ReportPreviewRequest,
@@ -28,6 +28,12 @@ type WorkspacePreset = {
   compact: boolean
   defaultSidebarCollapsed: boolean
   defaultDetailCollapsed: boolean
+}
+type RpcConfigPrefill = {
+  schemaVersion: number
+  url: string
+  authMode: RpcAuthMode
+  username: string | null
 }
 
 function toErrorMessage(error: unknown): string {
@@ -127,6 +133,16 @@ function App() {
   const graphViewActionsRef = useRef<GraphCanvasTopBarActions | null>(null)
   const graphRefreshRef = useRef<(() => Promise<void>) | null>(null)
   const detailRefreshRef = useRef<(() => Promise<void>) | null>(null)
+  const [isRpcConfigured, setIsRpcConfigured] = useState(false)
+  const [isRpcModalOpen, setIsRpcModalOpen] = useState(true)
+  const [rpcUrl, setRpcUrl] = useState('')
+  const [rpcAuthMode, setRpcAuthMode] = useState<RpcAuthMode>('none')
+  const [rpcUsername, setRpcUsername] = useState('')
+  const [rpcPassword, setRpcPassword] = useState('')
+  const [publicEndpointAcknowledged, setPublicEndpointAcknowledged] = useState(false)
+  const [isRpcConnecting, setIsRpcConnecting] = useState(false)
+  const [rpcConnectionError, setRpcConnectionError] = useState<string | null>(null)
+  const [rpcConnectionSuccess, setRpcConnectionSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     function handleResize() {
@@ -146,20 +162,39 @@ function App() {
   }, [])
 
   useEffect(() => {
-    void invoke<ProvenanceSetup>('cmd_set_rpc_config', {
-      args: {
-        url: import.meta.env.VITE_PROVENANCE_RPC_URL,
-        username: import.meta.env.VITE_PROVENANCE_RPC_USER,
-        password: import.meta.env.VITE_PROVENANCE_RPC_PASS,
-      },
-    })
+    let isSubscribed = true
+
+    async function loadRpcConfigPrefill() {
+      try {
+        const prefill = await invoke<RpcConfigPrefill>('cmd_get_rpc_config_prefill')
+        if (!isSubscribed) return
+        setRpcUrl(prefill.url ?? '')
+        setRpcAuthMode(prefill.authMode === 'userpass' ? 'userpass' : 'none')
+        setRpcUsername(prefill.username ?? '')
+        setRpcPassword('')
+        setPublicEndpointAcknowledged(false)
+      } catch (error) {
+        if (!isSubscribed) return
+        setRpcConnectionError(`Failed to load saved RPC configuration: ${toErrorMessage(error)}`)
+      }
+    }
+
+    void loadRpcConfigPrefill()
+    return () => {
+      isSubscribed = false
+    }
   }, [])
 
   const handleSearchTxid = useCallback((nextRootTxid: string) => {
+    if (!isRpcConfigured) {
+      setIsRpcModalOpen(true)
+      return
+    }
+
     setRootTxid(nextRootTxid)
     setSelectedTxid(null)
     setGraphReloadKey((current) => current + 1)
-  }, [])
+  }, [isRpcConfigured])
   const handleSelectTxid = useCallback((nextSelectedTxid: string | null) => {
     setSelectedTxid(nextSelectedTxid)
 
@@ -216,6 +251,46 @@ function App() {
       await detailRefreshRef.current()
     }
   }, [handleGraphRefresh])
+  const handleRpcConnect = useCallback(async () => {
+    const normalizedUrl = rpcUrl.trim()
+    if (!normalizedUrl) {
+      setRpcConnectionError('RPC URL is required.')
+      return
+    }
+
+    setIsRpcConnecting(true)
+    setRpcConnectionError(null)
+    setRpcConnectionSuccess(null)
+
+    try {
+      await invoke('cmd_set_rpc_config', {
+        args: {
+          url: normalizedUrl,
+          authMode: rpcAuthMode,
+          username: rpcAuthMode === 'userpass' ? rpcUsername.trim() : null,
+          password: rpcAuthMode === 'userpass' ? rpcPassword : null,
+        },
+      })
+
+      setIsRpcConfigured(true)
+      setIsImportExportOpen(false)
+      setSelectedTxid(null)
+      setGraphData(null)
+      setRpcConnectionSuccess('Connected successfully.')
+      setIsRpcModalOpen(false)
+      try {
+        await handleWorkspaceRefresh()
+      } catch (refreshError) {
+        console.error(
+          `RPC connected but workspace refresh failed: ${toErrorMessage(refreshError)}`,
+        )
+      }
+    } catch (error) {
+      setRpcConnectionError(toErrorMessage(error))
+    } finally {
+      setIsRpcConnecting(false)
+    }
+  }, [handleWorkspaceRefresh, rpcAuthMode, rpcPassword, rpcUrl, rpcUsername])
   const handleExportGraphJson = useCallback(async () => {
     if (!graphData || graphData.nodes.length === 0) {
       return
@@ -310,36 +385,44 @@ function App() {
         rootTxid={rootTxid}
         onSearchTxid={handleSearchTxid}
         onExportGraphJson={handleExportGraphJson}
-        onOpenImportExport={() => setIsImportExportOpen(true)}
+        onOpenImportExport={() => {
+          if (!isRpcConfigured) {
+            setIsRpcModalOpen(true)
+            return
+          }
+          setIsImportExportOpen(true)
+        }}
       />
       <div className="content-row">
         <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} onToggle={handleToggleSidebar} />
         <div className="main-area">
           <div className="workspace-scroll">
-            <div className={workspaceClassName}>
-              <GraphCanvas
-                rootTxid={rootTxid}
-                reloadKey={graphReloadKey}
-                selectedTxid={selectedTxid}
-                onSelectTxid={handleSelectTxid}
-                onGraphDataChange={handleGraphDataChange}
-                onRegisterViewActions={handleRegisterViewActions}
-                onRegisterRefresh={handleRegisterGraphRefresh}
-              />
-              <DetailPanel
-                selectedTxid={selectedTxid}
-                collapsed={detailCollapsed}
-                onGraphRefresh={handleGraphRefresh}
-                onRegisterRefresh={handleRegisterDetailRefresh}
-                onDeselect={() => setSelectedTxid(null)}
-                onToggle={handleToggleDetail}
-              />
-            </div>
+            {isRpcConfigured ? (
+              <div className={workspaceClassName}>
+                <GraphCanvas
+                  rootTxid={rootTxid}
+                  reloadKey={graphReloadKey}
+                  selectedTxid={selectedTxid}
+                  onSelectTxid={handleSelectTxid}
+                  onGraphDataChange={handleGraphDataChange}
+                  onRegisterViewActions={handleRegisterViewActions}
+                  onRegisterRefresh={handleRegisterGraphRefresh}
+                />
+                <DetailPanel
+                  selectedTxid={selectedTxid}
+                  collapsed={detailCollapsed}
+                  onGraphRefresh={handleGraphRefresh}
+                  onRegisterRefresh={handleRegisterDetailRefresh}
+                  onDeselect={() => setSelectedTxid(null)}
+                  onToggle={handleToggleDetail}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
       <ImportExportCenter
-        isOpen={isImportExportOpen}
+        isOpen={isImportExportOpen && isRpcConfigured}
         onClose={() => setIsImportExportOpen(false)}
         rootTxid={rootTxid}
         onPreviewReport={handlePreviewReport}
@@ -348,6 +431,51 @@ function App() {
         onApplyLabelImport={handleApplyLabelImport}
         onPreviewLabelExport={handlePreviewLabelExport}
         onExportLabels={handleExportLabels}
+      />
+      <RpcConnectionModal
+        isOpen={isRpcModalOpen}
+        url={rpcUrl}
+        authMode={rpcAuthMode}
+        username={rpcUsername}
+        password={rpcPassword}
+        publicEndpointAcknowledged={publicEndpointAcknowledged}
+        isConnecting={isRpcConnecting}
+        errorMessage={rpcConnectionError}
+        successMessage={rpcConnectionSuccess}
+        onUrlChange={(value) => {
+          setRpcUrl(value)
+          setPublicEndpointAcknowledged(false)
+          setRpcConnectionError(null)
+          setRpcConnectionSuccess(null)
+        }}
+        onAuthModeChange={(value) => {
+          setRpcAuthMode(value)
+          if (value === 'none') {
+            setRpcPassword('')
+          }
+          setPublicEndpointAcknowledged(false)
+          setRpcConnectionError(null)
+          setRpcConnectionSuccess(null)
+        }}
+        onUsernameChange={(value) => {
+          setRpcUsername(value)
+          setRpcConnectionError(null)
+          setRpcConnectionSuccess(null)
+        }}
+        onPasswordChange={(value) => {
+          setRpcPassword(value)
+          setRpcConnectionError(null)
+          setRpcConnectionSuccess(null)
+        }}
+        onPublicEndpointAcknowledgedChange={setPublicEndpointAcknowledged}
+        onConnect={handleRpcConnect}
+        onClose={() => {
+          if (!isRpcConfigured) {
+            setRpcConnectionError('RPC connection is required before continuing.')
+            return
+          }
+          setIsRpcModalOpen(false)
+        }}
       />
     </div>
   )

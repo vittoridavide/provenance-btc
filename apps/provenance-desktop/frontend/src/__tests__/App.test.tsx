@@ -18,36 +18,44 @@ const REPORT_REQUEST = {
 const graphRefreshSpy = vi.fn()
 const detailRefreshSpy = vi.fn()
 
-function MockGraphCanvas(props: {
+function MockGraphCanvas({
+  onRegisterRefresh,
+  onRegisterViewActions,
+  onGraphDataChange,
+}: {
   onRegisterRefresh: (refresh: (() => Promise<void>) | null) => void
   onRegisterViewActions: (actions: null) => void
   onGraphDataChange: (graph: null) => void
 }) {
   useEffect(() => {
-    props.onRegisterRefresh(async () => {
+    onRegisterRefresh(async () => {
       graphRefreshSpy()
     })
-    props.onRegisterViewActions(null)
-    props.onGraphDataChange(null)
+    onRegisterViewActions(null)
+    onGraphDataChange(null)
 
     return () => {
-      props.onRegisterRefresh(null)
+      onRegisterRefresh(null)
     }
-  }, [props.onGraphDataChange, props.onRegisterRefresh, props.onRegisterViewActions])
+  }, [onGraphDataChange, onRegisterRefresh, onRegisterViewActions])
 
   return <div data-testid="graph-canvas" />
 }
 
-function MockDetailPanel(props: { onRegisterRefresh: (refresh: (() => Promise<void>) | null) => void }) {
+function MockDetailPanel({
+  onRegisterRefresh,
+}: {
+  onRegisterRefresh: (refresh: (() => Promise<void>) | null) => void
+}) {
   useEffect(() => {
-    props.onRegisterRefresh(async () => {
+    onRegisterRefresh(async () => {
       detailRefreshSpy()
     })
 
     return () => {
-      props.onRegisterRefresh(null)
+      onRegisterRefresh(null)
     }
-  }, [props.onRegisterRefresh])
+  }, [onRegisterRefresh])
 
   return <div data-testid="detail-panel" />
 }
@@ -125,6 +133,23 @@ vi.mock('../components/import-export/ImportExportCenter', () => ({
 }))
 
 import App from '../App'
+async function connectRpc(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() =>
+    expect(screen.getByLabelText('RPC URL')).toHaveValue('http://127.0.0.1:8332'),
+  )
+  await user.click(screen.getByRole('button', { name: 'Connect' }))
+  await waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith('cmd_set_rpc_config', {
+      args: {
+        url: 'http://127.0.0.1:8332',
+        authMode: 'none',
+        username: null,
+        password: null,
+      },
+    }),
+  )
+  await waitFor(() => expect(screen.queryByText('Connect Bitcoin RPC')).not.toBeInTheDocument())
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -132,6 +157,15 @@ beforeEach(() => {
   detailRefreshSpy.mockReset()
   vi.mocked(invoke).mockImplementation((command) => {
     switch (command) {
+      case 'cmd_get_rpc_config_prefill':
+        return Promise.resolve({
+          schemaVersion: 1,
+          url: 'http://127.0.0.1:8332',
+          authMode: 'none',
+          username: null,
+        })
+      case 'cmd_set_rpc_config':
+        return Promise.resolve(undefined)
       case 'cmd_preview_report':
         return Promise.resolve({
           manifest: {
@@ -198,18 +232,25 @@ afterEach(() => {
 })
 
 describe('App import/export wiring', () => {
-  it('routes desktop import/export actions through the expected Tauri commands', async () => {
+  it('requires modal-first RPC connection before graph workflows run', async () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith(
-        'cmd_set_rpc_config',
-        expect.objectContaining({
-          args: expect.any(Object),
-        }),
-      ),
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('cmd_get_rpc_config_prefill'))
+    expect(invoke).not.toHaveBeenCalledWith(
+      'cmd_set_rpc_config',
+      expect.objectContaining({ args: expect.any(Object) }),
     )
+    expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument()
+
+    await connectRpc(user)
+
+    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+  })
+  it('routes desktop import/export actions through the expected Tauri commands', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await connectRpc(user)
 
     await user.click(screen.getByRole('button', { name: 'Open Import Export' }))
     await user.click(screen.getByRole('button', { name: 'Preview report' }))
@@ -245,6 +286,7 @@ describe('App import/export wiring', () => {
   it('refreshes graph and detail state after applying a BIP-329 import', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await connectRpc(user)
 
     await user.click(screen.getByRole('button', { name: 'Open Import Export' }))
     await user.click(screen.getByRole('button', { name: 'Apply labels import' }))
