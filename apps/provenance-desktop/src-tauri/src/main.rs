@@ -26,6 +26,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tauri::Manager;
+use tauri_plugin_log::log::LevelFilter;
 
 const RPC_PREFILL_SCHEMA_VERSION: u32 = 1;
 const RPC_PREFILL_FILE_NAME: &str = "rpc_config_prefill.json";
@@ -229,11 +230,20 @@ fn cmd_set_rpc_config(
     args: SetRpcConfigArgs,
 ) -> Result<(), String> {
     let auth = parse_rpc_auth(args.auth_mode, args.username, args.password)?;
+    let auth_mode = match &auth {
+        RpcAuth::None => "none",
+        RpcAuth::UserPass { .. } => "userpass",
+        RpcAuth::CookieFile { .. } => "cookie",
+    };
 
     let cfg = RpcConfig {
         url: args.url,
         auth,
     };
+    eprintln!(
+        "[provenance-app] configuring RPC url={} auth_mode={auth_mode}",
+        cfg.url
+    );
     // Validate RPC immediately.
     CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
     let prefill = RpcConfigPrefill::from_rpc_config(&cfg);
@@ -340,11 +350,16 @@ async fn cmd_delete_classification(
 #[tauri::command]
 async fn cmd_fetch_tx(state: tauri::State<'_, AppState>, txid: String) -> Result<TxView, String> {
     let cfg = get_rpc_config(&state)?;
+    eprintln!(
+        "[provenance-app] cmd_fetch_tx txid={} rpc_url={}",
+        txid, cfg.url
+    );
 
     tauri::async_runtime::spawn_blocking(move || {
+        let rpc_url = cfg.url.clone();
         let rpc = CoreRpc::new(&cfg).map_err(|e| format!("Failed to connect: {e}"))?;
         rpc.fetch_tx_view(&txid)
-            .map_err(|e| format!("Failed to fetch tx: {e}"))
+            .map_err(|e| format!("cmd_fetch_tx failed for txid='{txid}' rpc_url='{rpc_url}': {e}"))
     })
     .await
     .map_err(|e| format!("Join error: {e}"))?
@@ -358,13 +373,22 @@ async fn cmd_build_graph(
 ) -> Result<ProvenanceGraph, String> {
     let cfg = get_rpc_config(&state)?;
     let db_path = (*state.db_path).clone();
+    eprintln!(
+        "[provenance-app] cmd_build_graph root_txid={} depth={} rpc_url={}",
+        root_txid, depth, cfg.url
+    );
 
     tauri::async_runtime::spawn_blocking(move || {
+        let rpc_url = cfg.url.clone();
         let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
         let db = open_db(&db_path)?;
         let request = GraphExportContextRequest::new(root_txid, depth);
-        let context =
-            build_graph_export_context(&rpc, db.conn(), &request).map_err(|e| e.to_string())?;
+        let context = build_graph_export_context(&rpc, db.conn(), &request).map_err(|e| {
+            format!(
+                "cmd_build_graph failed for root_txid='{}' depth={} rpc_url='{}': {e}",
+                request.root_txid, request.traversal_depth, rpc_url
+            )
+        })?;
         Ok(context.to_provenance_graph())
     })
     .await
@@ -378,16 +402,28 @@ async fn cmd_get_tx_detail(
 ) -> Result<TransactionDetail, String> {
     let cfg = get_rpc_config(&state)?;
     let db_path = (*state.db_path).clone();
+    eprintln!(
+        "[provenance-app] cmd_get_tx_detail txid={} rpc_url={}",
+        txid, cfg.url
+    );
 
     tauri::async_runtime::spawn_blocking(move || {
+        let rpc_url = cfg.url.clone();
         let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
         let db = open_db(&db_path)?;
         let conn = db.conn();
-
-        let tx_view = rpc.fetch_tx_view(&txid).map_err(|e| e.to_string())?;
+        let tx_view = rpc.fetch_tx_view(&txid).map_err(|e| {
+            format!(
+                "cmd_get_tx_detail failed while fetching tx view for txid='{txid}' rpc_url='{rpc_url}': {e}"
+            )
+        })?;
         let tx_hex = rpc
             .get_raw_transaction_hex_str(&txid)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                format!(
+                    "cmd_get_tx_detail failed while fetching tx hex for txid='{txid}' rpc_url='{rpc_url}': {e}"
+                )
+            })?;
 
         let tx_label = labels::get_label(conn, RefType::Tx.as_str(), &txid)
             .map_err(|e| e.to_string())?
@@ -659,6 +695,12 @@ fn main() {
     let db_path = Arc::new(db_path);
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(LevelFilter::Info)
+                .level_for("bitcoincore_rpc", LevelFilter::Debug)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .setup({
             let rpc_config = Arc::clone(&rpc_config);

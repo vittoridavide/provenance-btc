@@ -338,10 +338,8 @@ function App() {
       setIsRpcModalOpen(false)
       try {
         await handleWorkspaceRefresh()
-      } catch (refreshError) {
-        console.error(
-          `RPC connected but workspace refresh failed: ${toErrorMessage(refreshError)}`,
-        )
+      } catch {
+        // Intentionally ignore refresh failures here: RPC connection already succeeded.
       }
     } catch (error) {
       setRpcConnectionError(toErrorMessage(error))
@@ -368,79 +366,49 @@ function App() {
       const exportTxid = rootTxid.trim() || 'graph'
       const fileName = `provenance-graph-${exportTxid}-${formatFileTimestamp()}.json`
       downloadTextFile(fileName, graphJson, 'application/json')
-    } catch (error) {
-      console.error(`Failed to export graph JSON: ${toErrorMessage(error)}`)
+    } catch {
+      // Intentionally ignore export failures to keep graph workflow non-blocking.
     }
   }, [graphData, rootTxid])
   const handlePreviewLabelExport = useCallback(async () => {
-    try {
-      return await invoke<Bip329ExportResult>('cmd_preview_labels_export')
-    } catch (error) {
-      console.error(`Failed to preview label export: ${toErrorMessage(error)}`)
-      throw error
-    }
+    return await invoke<Bip329ExportResult>('cmd_preview_labels_export')
   }, [])
   const handleExportLabels = useCallback(async (outputPath: string) => {
-    try {
-      const savedPath = await invoke<string>('cmd_export_labels', {
-        args: {
-          outputPath,
-        },
-      })
-      return savedPath
-    } catch (error) {
-      console.error(`Failed to export labels: ${toErrorMessage(error)}`)
-      throw error
-    }
+    const savedPath = await invoke<string>('cmd_export_labels', {
+      args: {
+        outputPath,
+      },
+    })
+    return savedPath
   }, [])
   const handlePreviewLabelImport = useCallback(async (inputPath: string) => {
-    try {
-      return await invoke<Bip329ImportPreviewResponse>('cmd_preview_labels_import', {
-        args: { inputPath },
-      })
-    } catch (error) {
-      console.error(`Failed to preview label import: ${toErrorMessage(error)}`)
-      throw error
-    }
+    return await invoke<Bip329ImportPreviewResponse>('cmd_preview_labels_import', {
+      args: { inputPath },
+    })
   }, [])
   const handleApplyLabelImport = useCallback(
     async (inputPath: string, policy: Bip329ImportConflictPolicy) => {
-      try {
-        const result = await invoke<Bip329ImportApplyResult>('cmd_apply_labels_import', {
-          args: { inputPath, policy },
-        })
-        await handleWorkspaceRefresh()
-        return result
-      } catch (error) {
-        console.error(`Failed to apply label import: ${toErrorMessage(error)}`)
-        throw error
-      }
+      const result = await invoke<Bip329ImportApplyResult>('cmd_apply_labels_import', {
+        args: { inputPath, policy },
+      })
+      await handleWorkspaceRefresh()
+      return result
     },
     [handleWorkspaceRefresh],
   )
   const handlePreviewReport = useCallback(async (request: ReportPreviewRequest) => {
-    try {
-      return await invoke<ReportPreviewResponse>('cmd_preview_report', {
-        args: request,
-      })
-    } catch (error) {
-      console.error(`Failed to preview report: ${toErrorMessage(error)}`)
-      throw error
-    }
+    return await invoke<ReportPreviewResponse>('cmd_preview_report', {
+      args: request,
+    })
   }, [])
   const handleExportReport = useCallback(
     async (request: ReportExportRequest, outputPath: string) => {
-      try {
-        return await invoke<ReportFileExportResult>('cmd_export_report', {
-          args: {
-            request,
-            outputPath,
-          },
-        })
-      } catch (error) {
-        console.error(`Failed to export report: ${toErrorMessage(error)}`)
-        throw error
-      }
+      return await invoke<ReportFileExportResult>('cmd_export_report', {
+        args: {
+          request,
+          outputPath,
+        },
+      })
     },
     [],
   )

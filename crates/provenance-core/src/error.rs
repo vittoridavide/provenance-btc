@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum CoreError {
     #[error("RPC error: {0}")]
-    Rpc(#[from] bitcoincore_rpc::Error),
+    Rpc(String),
 
     #[error("SQLite error: {0}")]
     Sqlite(#[from] rusqlite::Error),

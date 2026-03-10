@@ -1,18 +1,18 @@
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::{Network, Transaction, Txid};
 
+use crate::error::{CoreError, Result};
 use crate::model::helpers::{address_from_spk, classify_script_type, network_from_chain};
 use crate::model::tx_view::{
     calculate_fee_sat, calculate_feerate_sat_vb, TxInpView, TxOutView, TxView,
 };
-
-use std::{collections::HashMap, sync::Arc};
-
-use crate::error::{CoreError, Result};
 use crate::rpc::indexinfo::parse_indexinfo;
 use crate::rpc::types::CoreStatus;
-use bitcoincore_rpc::{Auth, Client, RpcApi};
-use serde::Deserialize;
+
+use reqwest::blocking::Client as HttpClient;
+use reqwest::StatusCode;
+use serde::{de::DeserializeOwned, Deserialize};
+use std::{collections::HashMap, fs, sync::Arc, time::Duration};
 
 #[derive(Debug, Deserialize)]
 struct NetworkInfoPartial {
@@ -52,7 +52,7 @@ impl WarningsField {
 
 #[derive(Debug, Clone)]
 pub struct RpcConfig {
-    pub url: String, // e.g. "http://127.0.0.1:8332"
+    pub url: String,
     pub auth: RpcAuth,
 }
 
@@ -68,7 +68,7 @@ impl RpcConfig {
     ///
     /// Expected variables:
     /// - `PROVENANCE_RPC_URL`
-    /// - Either (`PROVENANCE_RPC_USER` + `PROVENANCE_RPC_PASS`) or `PROVENANCE_RPC_COOKIE`
+    /// - Optional auth via (`PROVENANCE_RPC_USER` + `PROVENANCE_RPC_PASS`) or `PROVENANCE_RPC_COOKIE`
     ///
     /// Returns `Ok(None)` if `PROVENANCE_RPC_URL` is not set.
     pub fn from_env() -> Result<Option<Self>> {
@@ -88,62 +88,205 @@ impl RpcConfig {
         } else if let Some(path) = env("PROVENANCE_RPC_COOKIE") {
             RpcAuth::CookieFile { path }
         } else {
-            return Err(CoreError::MissingAuth);
+            RpcAuth::None
         };
 
         Ok(Some(Self { url, auth }))
     }
 
-    pub fn to_auth(&self) -> Result<Auth> {
+    pub fn basic_auth_credentials(&self) -> Result<Option<(String, String)>> {
         match &self.auth {
-            RpcAuth::None => Ok(Auth::None),
+            RpcAuth::None => Ok(None),
             RpcAuth::UserPass { username, password } => {
-                Ok(Auth::UserPass(username.to_string(), password.to_string()))
+                Ok(Some((username.to_string(), password.to_string())))
             }
-            RpcAuth::CookieFile { path } => Ok(Auth::CookieFile(path.into())),
+            RpcAuth::CookieFile { path } => {
+                let cookie = fs::read_to_string(path).map_err(|e| {
+                    CoreError::Other(format!("Failed to read RPC cookie file '{path}': {e}"))
+                })?;
+                let cookie = cookie.trim();
+                let mut split = cookie.splitn(2, ':');
+                let username = split.next().unwrap_or_default().trim();
+                let password = split.next().unwrap_or_default().trim();
+
+                if username.is_empty() || password.is_empty() {
+                    return Err(CoreError::Other(format!(
+                        "RPC cookie file '{path}' must contain 'username:password'"
+                    )));
+                }
+
+                Ok(Some((username.to_string(), password.to_string())))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonRpcResponse<T> {
+    result: Option<T>,
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonRpcError {
+    code: i64,
+    message: String,
+    #[serde(default)]
+    data: Option<serde_json::Value>,
+}
+
+impl JsonRpcError {
+    fn into_message(self) -> String {
+        match self.data {
+            Some(data) => format!("JSON-RPC error {}: {} ({data})", self.code, self.message),
+            None => format!("JSON-RPC error {}: {}", self.code, self.message),
         }
     }
 }
 
 pub struct CoreRpc {
-    client: Client,
+    client: HttpClient,
+    url: String,
+    auth_mode: &'static str,
+    basic_auth: Option<(String, String)>,
 }
 
 impl CoreRpc {
+    fn truncate_for_log(message: &str) -> String {
+        const MAX_CHARS: usize = 512;
+        let mut truncated = message.chars().take(MAX_CHARS).collect::<String>();
+        if message.chars().count() > MAX_CHARS {
+            truncated.push('…');
+        }
+        truncated
+    }
+
+    fn log_request(&self, method: &str, params: &serde_json::Value) {
+        eprintln!(
+            "[provenance-rpc] request method={method} url={} auth_mode={} params={}",
+            self.url, self.auth_mode, params
+        );
+    }
+
+    fn log_response_ok(&self, method: &str, http_status: StatusCode) {
+        eprintln!(
+            "[provenance-rpc] response method={method} url={} status=ok http_status={}",
+            self.url, http_status
+        );
+    }
+
+    fn log_response_err(&self, method: &str, http_status: Option<StatusCode>, err: &str) {
+        match http_status {
+            Some(status) => eprintln!(
+                "[provenance-rpc] response method={method} url={} status=error http_status={} error={}",
+                self.url, status, err
+            ),
+            None => eprintln!(
+                "[provenance-rpc] response method={method} url={} status=error error={}",
+                self.url, err
+            ),
+        }
+    }
+
+    fn call<T: DeserializeOwned>(&self, method: &str, params: serde_json::Value) -> Result<T> {
+        self.log_request(method, &params);
+
+        let body = serde_json::json!({
+            "jsonrpc": "1.0",
+            "id": "provenance",
+            "method": method,
+            "params": params,
+        });
+
+        let mut request = self.client.post(&self.url).json(&body);
+        if let Some((username, password)) = &self.basic_auth {
+            request = request.basic_auth(username, Some(password));
+        }
+
+        let response = request.send().map_err(|err| {
+            let message = format!("transport error: {err}");
+            self.log_response_err(method, None, &message);
+            CoreError::Rpc(message)
+        })?;
+
+        let http_status = response.status();
+        let text = response.text().map_err(|err| {
+            let message = format!("failed to read response body: {err}");
+            self.log_response_err(method, Some(http_status), &message);
+            CoreError::Rpc(message)
+        })?;
+
+        let parsed = match serde_json::from_str::<JsonRpcResponse<T>>(&text) {
+            Ok(parsed) => parsed,
+            Err(parse_err) => {
+                let body_preview = Self::truncate_for_log(&text);
+                let message = if http_status.is_success() {
+                    format!("invalid JSON-RPC response: {parse_err}; body={body_preview}")
+                } else {
+                    format!(
+                        "transport error: unexpected HTTP code: {}; body={body_preview}",
+                        http_status.as_u16()
+                    )
+                };
+                self.log_response_err(method, Some(http_status), &message);
+                return Err(CoreError::Rpc(message));
+            }
+        };
+
+        if let Some(error) = parsed.error {
+            let message = error.into_message();
+            self.log_response_err(method, Some(http_status), &message);
+            return Err(CoreError::Rpc(message));
+        }
+
+        if !http_status.is_success() {
+            let message = format!(
+                "transport error: unexpected HTTP code: {}",
+                http_status.as_u16()
+            );
+            self.log_response_err(method, Some(http_status), &message);
+            return Err(CoreError::Rpc(message));
+        }
+
+        let Some(result) = parsed.result else {
+            let message = "RPC response missing result".to_string();
+            self.log_response_err(method, Some(http_status), &message);
+            return Err(CoreError::Rpc(message));
+        };
+
+        self.log_response_ok(method, http_status);
+        Ok(result)
+    }
+
     /// Fetch raw transaction hex (`getrawtransaction <txid> false`).
     pub fn get_raw_transaction_hex(&self, txid: &Txid) -> Result<String> {
         let params = serde_json::json!([txid, false]);
-        self.client
-            .call("getrawtransaction", params.as_array().unwrap())
-            .map_err(crate::error::CoreError::Rpc)
+        self.call("getrawtransaction", params)
     }
 
     /// Same as [`CoreRpc::get_raw_transaction_hex`], but accepts a string txid.
     pub fn get_raw_transaction_hex_str(&self, txid: &str) -> Result<String> {
         let txid: Txid = txid
             .parse()
-            .map_err(|e| crate::error::CoreError::Other(format!("Invalid txid: {e}")))?;
+            .map_err(|e| CoreError::Other(format!("Invalid txid: {e}")))?;
         self.get_raw_transaction_hex(&txid)
     }
 
     fn fetch_tx_verbose(&self, txid: &Txid) -> Result<serde_json::Value> {
         let params = serde_json::json!([txid, true]);
-        self.client
-            .call("getrawtransaction", params.as_array().unwrap())
-            .map_err(crate::error::CoreError::Rpc)
+        self.call("getrawtransaction", params)
     }
 
     fn tx_from_verbose_value(&self, v: &serde_json::Value) -> Result<Transaction> {
         let hex_str = v
             .get("hex")
             .and_then(|x| x.as_str())
-            .ok_or_else(|| crate::error::CoreError::Other("RPC response missing 'hex'".into()))?;
+            .ok_or_else(|| CoreError::Other("RPC response missing 'hex'".into()))?;
 
-        let raw = hex::decode(hex_str)
-            .map_err(|e| crate::error::CoreError::Other(format!("Invalid tx hex: {e}")))?;
+        let raw =
+            hex::decode(hex_str).map_err(|e| CoreError::Other(format!("Invalid tx hex: {e}")))?;
 
-        deserialize(&raw)
-            .map_err(|e| crate::error::CoreError::Other(format!("Failed to parse tx: {e}")))
+        deserialize(&raw).map_err(|e| CoreError::Other(format!("Failed to parse tx: {e}")))
     }
 
     fn fetch_tx(&self, txid: &Txid) -> Result<Transaction> {
@@ -152,7 +295,7 @@ impl CoreRpc {
     }
 
     fn current_network(&self) -> Result<Option<Network>> {
-        let chain_v: serde_json::Value = self.client.call("getblockchaininfo", &[])?;
+        let chain_v: serde_json::Value = self.call("getblockchaininfo", serde_json::json!([]))?;
         let chain = chain_v
             .get("chain")
             .and_then(|x| x.as_str())
@@ -161,12 +304,8 @@ impl CoreRpc {
     }
 
     fn block_header_meta(&self, blockhash: &str) -> Result<(Option<u32>, Option<u64>)> {
-        // getblockheader <hash> true
         let params = serde_json::json!([blockhash, true]);
-        let hdr_v: serde_json::Value = self
-            .client
-            .call("getblockheader", params.as_array().unwrap())
-            .map_err(crate::error::CoreError::Rpc)?;
+        let hdr_v: serde_json::Value = self.call("getblockheader", params)?;
 
         let height = hdr_v
             .get("height")
@@ -176,21 +315,17 @@ impl CoreRpc {
         Ok((height, time))
     }
 
-    pub fn fetch_tx_view(&self, txid_str: &str) -> crate::error::Result<TxView> {
+    pub fn fetch_tx_view(&self, txid_str: &str) -> Result<TxView> {
         let mut tx_cache: HashMap<Txid, Arc<Transaction>> = HashMap::new();
 
-        // Validate txid format early (better error messages)
         let txid: Txid = txid_str
             .parse()
-            .map_err(|e| crate::error::CoreError::Other(format!("Invalid txid: {e}")))?;
+            .map_err(|e| CoreError::Other(format!("Invalid txid: {e}")))?;
 
-        // Fetch verbose once for the *main* tx so we can also read confirmation/block metadata.
         let main_v = self.fetch_tx_verbose(&txid)?;
         let tx = Arc::new(self.tx_from_verbose_value(&main_v)?);
         tx_cache.insert(txid, Arc::clone(&tx));
 
-        // Helper for fetching *previous* transactions (cached). Defined after inserting the main tx
-        // so we don't fight the borrow checker.
         let mut get_tx = |txid: Txid| -> Result<Arc<Transaction>> {
             if let Some(tx) = tx_cache.get(&txid) {
                 return Ok(Arc::clone(tx));
@@ -202,7 +337,6 @@ impl CoreRpc {
 
         let network = self.current_network()?;
 
-        // Confirmation metadata
         let confirmations = main_v
             .get("confirmations")
             .and_then(|x| x.as_u64())
@@ -218,7 +352,6 @@ impl CoreRpc {
             (None, None)
         };
 
-        // weight/vsize
         let weight: u64 = tx.weight().to_wu();
         let vsize: u64 = weight.div_ceil(4);
 
@@ -243,7 +376,6 @@ impl CoreRpc {
         let mut inputs = Vec::<TxInpView>::with_capacity(tx.input.len());
         for (i, inp) in tx.input.iter().enumerate() {
             if inp.previous_output.is_null() {
-                // Coinbase input has no prevout to resolve.
                 inputs.push(TxInpView {
                     vin: i as u32,
                     prev_txid: inp.previous_output.txid.to_string(),
@@ -262,8 +394,6 @@ impl CoreRpc {
             let prev_txid = inp.previous_output.txid;
             let vout = inp.previous_output.vout as usize;
 
-            // Graceful degradation: if parent tx/prevout can't be resolved, keep the input with
-            // unknown value/script instead of failing the whole tx view.
             let (value_sat, script_pubkey_hex, script_type) = match get_tx(prev_txid) {
                 Ok(prev_tx) => match prev_tx.output.get(vout) {
                     Some(prev_out) => (
@@ -317,18 +447,32 @@ impl CoreRpc {
         if cfg.url.trim().is_empty() {
             return Err(CoreError::InvalidUrl("empty url".into()));
         }
-        let auth = cfg.to_auth()?;
-        let client = Client::new(&cfg.url, auth)?;
-        Ok(Self { client })
+
+        let client = HttpClient::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .map_err(|e| CoreError::Other(format!("Failed to build RPC HTTP client: {e}")))?;
+        let basic_auth = cfg.basic_auth_credentials()?;
+        let auth_mode = match &cfg.auth {
+            RpcAuth::None => "none",
+            RpcAuth::UserPass { .. } => "userpass",
+            RpcAuth::CookieFile { .. } => "cookie",
+        };
+
+        Ok(Self {
+            client,
+            url: cfg.url.clone(),
+            auth_mode,
+            basic_auth,
+        })
     }
 
     pub fn status(&self) -> Result<CoreStatus> {
-        let network: NetworkInfoPartial = self.client.call("getnetworkinfo", &[])?;
-        let chain: BlockchainInfoPartial = self.client.call("getblockchaininfo", &[])?;
+        let network: NetworkInfoPartial = self.call("getnetworkinfo", serde_json::json!([]))?;
+        let chain: BlockchainInfoPartial = self.call("getblockchaininfo", serde_json::json!([]))?;
 
-        // Index info optional
         let (txindex, coinstatsindex, blockfilterindex) =
-            match self.client.call::<serde_json::Value>("getindexinfo", &[]) {
+            match self.call::<serde_json::Value>("getindexinfo", serde_json::json!([])) {
                 Ok(v) => parse_indexinfo(&v),
                 Err(_) => (None, None, None),
             };

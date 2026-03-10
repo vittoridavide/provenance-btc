@@ -50,6 +50,9 @@ export function useTransactionDetail(
     setDetail(null)
 
     try {
+      console.info('[provenance-ui] cmd_get_tx_detail:start', {
+        txid: nextTxid,
+      })
       const txDetail = await invoke<TransactionDetail>('cmd_get_tx_detail', {
         txid: nextTxid,
       })
@@ -57,15 +60,26 @@ export function useTransactionDetail(
       if (requestId !== requestIdRef.current) {
         return
       }
+      console.info('[provenance-ui] cmd_get_tx_detail:success', {
+        txid: nextTxid,
+      })
 
       setDetail(txDetail)
     } catch (invokeError) {
       if (requestId !== requestIdRef.current) {
         return
       }
+      const errorMessage = toErrorMessage(invokeError)
+      console.error(
+        `[provenance-ui] cmd_get_tx_detail:error txid=${nextTxid} error=${errorMessage}`,
+      )
+      console.error('[provenance-ui] cmd_get_tx_detail:error', {
+        txid: nextTxid,
+        error: errorMessage,
+      })
 
       setDetail(null)
-      setError(toErrorMessage(invokeError))
+      setError(errorMessage)
       if (request?.throwOnError) {
         throw invokeError
       }

@@ -87,6 +87,11 @@ export function useGraph({
 
     try {
       const parsedOptions = JSON.parse(nextOptionsKey) as GraphBuildOptions
+      console.info('[provenance-ui] cmd_build_graph:start', {
+        rootTxid: nextRootTxid,
+        depth: nextDepth,
+        options: parsedOptions,
+      })
       const graphPayload = await invoke<ProvenanceGraph>('cmd_build_graph', {
         rootTxid: nextRootTxid,
         depth: nextDepth,
@@ -97,13 +102,26 @@ export function useGraph({
       if (requestId !== requestIdRef.current) {
         return
       }
+      console.info('[provenance-ui] cmd_build_graph:success', {
+        rootTxid: nextRootTxid,
+        depth: nextDepth,
+      })
 
       setGraph(graphPayload)
     } catch (invokeError) {
       if (requestId !== requestIdRef.current) {
         return
       }
-      setError(toErrorMessage(invokeError))
+      const errorMessage = toErrorMessage(invokeError)
+      console.error(
+        `[provenance-ui] cmd_build_graph:error rootTxid=${nextRootTxid} depth=${nextDepth} error=${errorMessage}`,
+      )
+      console.error('[provenance-ui] cmd_build_graph:error', {
+        rootTxid: nextRootTxid,
+        depth: nextDepth,
+        error: errorMessage,
+      })
+      setError(errorMessage)
       if (request?.throwOnError) {
         throw invokeError
       }

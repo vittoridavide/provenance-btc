@@ -25,6 +25,7 @@ bitcoin = { version = "0.32", features = ["serde"] }
 
 # Bitcoin Core RPC client
 bitcoincore-rpc = "0.17"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 # Async runtime (use async in core so Tauri commands can be async cleanly)
 tokio = { version = "1.36", features = ["rt-multi-thread", "macros", "time"] }
