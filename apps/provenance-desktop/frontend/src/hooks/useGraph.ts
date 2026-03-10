@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { GraphBuildOptions, ProvenanceGraph } from '../types/api'
 
-const DEFAULT_DEPTH = 10
+const DEFAULT_DEPTH = 3
 const DEFAULT_OPTIONS: GraphBuildOptions = {}
 
 type UseGraphParams = {

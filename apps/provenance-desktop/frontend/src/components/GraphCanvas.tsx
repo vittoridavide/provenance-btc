@@ -654,7 +654,7 @@ function GraphCanvas({
 
         {showRootPrompt && (
           <div className="graph-canvas__overlay">
-            <div className="graph-canvas__state-card graph-canvas__state-card--empty surface-card">
+            <div className="graph-canvas__state-card graph-canvas__state-card--empty ">
               <DatabaseIcon />
               <strong>Search for a transaction to begin</strong>
             </div>

@@ -135,7 +135,7 @@ function resolveWorkspacePreset(viewportWidth: number): WorkspacePreset {
     return {
       key: 'tight',
       compact: true,
-      defaultSidebarCollapsed: true,
+      defaultSidebarCollapsed: false,
       defaultDetailCollapsed: true,
     }
   }
@@ -144,7 +144,7 @@ function resolveWorkspacePreset(viewportWidth: number): WorkspacePreset {
     return {
       key: 'narrow',
       compact: true,
-      defaultSidebarCollapsed: true,
+      defaultSidebarCollapsed: false,
       defaultDetailCollapsed: false,
     }
   }
@@ -417,7 +417,6 @@ function App() {
       <TopBar
         rootTxid={rootTxid}
         onSearchTxid={handleSearchTxid}
-        onExportGraphJson={handleExportGraphJson}
         onOpenImportExport={() => {
           if (!isRpcConfigured) {
             setIsRpcModalOpen(true)
@@ -459,6 +458,7 @@ function App() {
         isOpen={isImportExportOpen && isRpcConfigured}
         onClose={() => setIsImportExportOpen(false)}
         rootTxid={rootTxid}
+        onExportGraphJson={handleExportGraphJson}
         onPreviewReport={handlePreviewReport}
         onExportReport={handleExportReport}
         onPreviewLabelImport={handlePreviewLabelImport}

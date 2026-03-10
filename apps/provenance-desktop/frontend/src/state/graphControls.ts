@@ -26,7 +26,7 @@ const DEFAULT_GRAPH_UI_CONTROL_STATE: GraphUiControlState = {
   auditMode: false,
   colorByCategory: false,
   showTransactions: 'all',
-  depth: 10,
+  depth: 3,
   showOnlyPathsToSelected: false,
   hideUnrelatedBranches: false,
   layoutMode: 'lr',

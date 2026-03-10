@@ -4,6 +4,7 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 import {
   ChevronDown,
   DownloadCloud,
+  FileJson2,
   FileSpreadsheet,
   Info,
   UploadCloud,
@@ -38,6 +39,7 @@ type ImportExportCenterProps = {
   isOpen: boolean
   onClose: () => void
   rootTxid: string
+  onExportGraphJson: () => Promise<void> | void
   onPreviewReport: (request: ReportPreviewRequest) => Promise<ReportPreviewResponse>
   onExportReport: (request: ReportExportRequest, outputPath: string) => Promise<ReportFileExportResult>
   onPreviewLabelImport: (inputPath: string) => Promise<Bip329ImportPreviewResponse>
@@ -206,6 +208,7 @@ function ImportExportCenter({
   isOpen,
   onClose,
   rootTxid,
+  onExportGraphJson,
   onPreviewReport,
   onExportReport,
   onPreviewLabelImport,
@@ -213,7 +216,7 @@ function ImportExportCenter({
   onPreviewLabelExport,
   onExportLabels,
 }: ImportExportCenterProps) {
-  const { depth, isGraphLoading } = useSyncExternalStore(
+  const { depth, canControl, isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
     getGraphControlsSnapshot,
     getGraphControlsSnapshot,
@@ -263,6 +266,7 @@ function ImportExportCenter({
         .slice(0, MAX_PREVIEW_SAMPLE_LINES),
     [labelImportPreview],
   )
+  const graphActionDisabled = isGraphLoading || !canControl || isBusy
   const canPreviewReport = hasValidRootTxid && !isGraphLoading && !isBusy
   const canSaveReport = !!reportPreview && reportPreview.manifest.row_count > 0 && !isBusy
   const canApplyLabelImport = !!labelImportPath && !!labelImportPreview && !isBusy
@@ -552,7 +556,7 @@ function ImportExportCenter({
                   </p>
                 </div>
 
-                <div className="import-export-center__grid import-export-center__grid--single">
+                <div className="import-export-center__grid">
                   <article className="import-export-center__card">
                     <div className="import-export-center__card-header">
                       <div className="import-export-center__icon-box import-export-center__icon-box--reports">
@@ -660,6 +664,35 @@ function ImportExportCenter({
                         {reportExportResult.manifest.schema_version}).
                       </p>
                     ) : null}
+                  </article>
+
+                  <article className="import-export-center__card">
+                    <div className="import-export-center__card-header">
+                      <div className="import-export-center__icon-box import-export-center__icon-box--reports">
+                        <FileJson2 size={20} aria-hidden="true" />
+                      </div>
+                      <div className="import-export-center__card-title-wrap">
+                        <h4 className="import-export-center__card-title">Export graph JSON</h4>
+                        <p className="import-export-center__card-description">
+                          Download the current graph as a raw JSON snapshot.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="import-export-center__card-actions">
+                      <button
+                        type="button"
+                        className="import-export-center__button import-export-center__button--primary"
+                        onClick={() => void onExportGraphJson()}
+                        disabled={graphActionDisabled}
+                      >
+                        Export graph JSON
+                      </button>
+                    </div>
+
+                    <InfoFooter>
+                      Exports the in-memory graph for the current root txid as a browser download.
+                    </InfoFooter>
                   </article>
                 </div>
               </section>

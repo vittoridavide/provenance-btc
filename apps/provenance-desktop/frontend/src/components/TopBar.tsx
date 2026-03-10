@@ -20,7 +20,6 @@ function SearchIcon() {
 type TopBarProps = {
   rootTxid: string
   onSearchTxid: (txid: string) => void
-  onExportGraphJson: () => Promise<void> | void
   onOpenImportExport: () => void
   onOpenRpcSettings: () => void
 }
@@ -28,17 +27,15 @@ type TopBarProps = {
 function TopBar({
   rootTxid,
   onSearchTxid,
-  onExportGraphJson,
   onOpenImportExport,
   onOpenRpcSettings,
 }: TopBarProps) {
-  const { canControl, isGraphLoading } = useSyncExternalStore(
+  const { isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
     getGraphControlsSnapshot,
     getGraphControlsSnapshot,
   )
   const [searchInput, setSearchInput] = useState(rootTxid)
-  const graphActionDisabled = isGraphLoading || !canControl
 
   useEffect(() => {
     setSearchInput(rootTxid)
@@ -77,14 +74,6 @@ function TopBar({
         </div>
       </form>
       <div className="top-bar__actions">
-        <button
-          type="button"
-          className="top-bar__button control-button"
-          onClick={() => void onExportGraphJson()}
-          disabled={graphActionDisabled}
-        >
-          Export graph JSON
-        </button>
         <button
           type="button"
           className="top-bar__button control-button"

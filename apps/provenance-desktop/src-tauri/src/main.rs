@@ -688,11 +688,7 @@ fn stored_to_api_classification(stored: &classifications::StoredClassification) 
 }
 
 fn main() {
-    let db_path =
-        env::var("PROVENANCE_DB_PATH").unwrap_or_else(|_| "provenance.sqlite3".to_string());
-    let _ = Database::open(&db_path);
     let rpc_config = Arc::new(RwLock::new(None));
-    let db_path = Arc::new(db_path);
 
     tauri::Builder::default()
         .plugin(
@@ -704,8 +700,26 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup({
             let rpc_config = Arc::clone(&rpc_config);
-            let db_path = Arc::clone(&db_path);
             move |app| {
+                let app_data_dir = app.path().app_data_dir().map_err(|e| {
+                    std::io::Error::other(format!("Failed to resolve app data directory: {e}"))
+                })?;
+                fs::create_dir_all(&app_data_dir).map_err(|e| {
+                    std::io::Error::other(format!(
+                        "Failed to create app data directory '{}': {e}",
+                        app_data_dir.display()
+                    ))
+                })?;
+
+                let db_path = env::var("PROVENANCE_DB_PATH").unwrap_or_else(|_| {
+                    app_data_dir
+                        .join("provenance.sqlite3")
+                        .to_string_lossy()
+                        .to_string()
+                });
+                eprintln!("[provenance-app] using database at {db_path}");
+                let _ = Database::open(&db_path);
+
                 let app_config_dir = app.path().app_config_dir().map_err(|e| {
                     std::io::Error::other(format!(
                         "Failed to resolve app config directory for RPC prefill: {e}"
@@ -713,7 +727,7 @@ fn main() {
                 })?;
                 let state = AppState {
                     rpc_config: Arc::clone(&rpc_config),
-                    db_path: Arc::clone(&db_path),
+                    db_path: Arc::new(db_path),
                     rpc_prefill_path: Arc::new(app_config_dir.join(RPC_PREFILL_FILE_NAME)),
                 };
                 app.manage(state);

@@ -23,7 +23,7 @@ const DEFAULT_GRAPH_CONTROLS_SNAPSHOT: GraphControlsSnapshot = {
   auditMode: false,
   colorByCategory: false,
   showTransactions: 'all',
-  depth: 10,
+  depth: 3,
   showOnlyPathsToSelected: false,
   hideUnrelatedBranches: false,
   layoutMode: 'lr',
@@ -128,6 +128,7 @@ type ImportExportCenterOverrides = Partial<ComponentProps<typeof ImportExportCen
 
 function renderCenter(overrides: ImportExportCenterOverrides = {}) {
   const onClose = vi.fn()
+  const onExportGraphJson = vi.fn()
   const onPreviewReport = vi.fn().mockResolvedValue(REPORT_PREVIEW)
   const onExportReport = vi.fn().mockResolvedValue(REPORT_EXPORT_RESULT)
   const onPreviewLabelImport = vi.fn().mockResolvedValue(LABEL_IMPORT_PREVIEW)
@@ -140,6 +141,7 @@ function renderCenter(overrides: ImportExportCenterOverrides = {}) {
       isOpen
       onClose={onClose}
       rootTxid={VALID_TXID}
+      onExportGraphJson={onExportGraphJson}
       onPreviewReport={onPreviewReport}
       onExportReport={onExportReport}
       onPreviewLabelImport={onPreviewLabelImport}
@@ -153,6 +155,7 @@ function renderCenter(overrides: ImportExportCenterOverrides = {}) {
   return {
     ...result,
     onClose,
+    onExportGraphJson,
     onPreviewReport,
     onExportReport,
     onPreviewLabelImport,

@@ -1196,8 +1196,8 @@
   align-items: center;
   text-align: center;
   color: #475569;
-  border-color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.94);
+  border: none;
+  background: transparent;
 }
 
 .graph-canvas__empty-icon {
