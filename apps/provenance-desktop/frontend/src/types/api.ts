@@ -121,6 +121,37 @@ export interface GraphExportContextRequest {
   traversal_depth: number
 }
 
+export type GraphInputKind = 'txid' | 'outpoint' | 'address'
+
+export interface GraphInputRequest {
+  input: string
+  traversal_depth: number
+  selected_root_txid?: string | null
+}
+
+export interface GraphInputCandidateRoot {
+  txid: string
+  vout: number | null
+  amount_sat: number | null
+  height: number | null
+}
+
+export interface GraphInputResolution {
+  normalized_input: string
+  input_kind: GraphInputKind
+  candidate_roots: GraphInputCandidateRoot[]
+  selected_root_txid: string | null
+  requires_selection: boolean
+}
+
+export type GraphExportContext = Record<string, unknown>
+
+export interface GraphInputBuildResponse {
+  resolution: GraphInputResolution
+  graph_context?: GraphExportContext | null
+  graph?: ProvenanceGraph | null
+}
+
 export interface ReportRequest {
   kind: ReportKind
   scope: ReportScope

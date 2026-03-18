@@ -1,25 +1,29 @@
 import { invoke } from '@tauri-apps/api/core'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { GraphBuildOptions, ProvenanceGraph } from '../types/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type {
+  GraphInputBuildResponse,
+  GraphInputResolution,
+  ProvenanceGraph,
+} from '../types/api'
 
 const DEFAULT_DEPTH = 3
-const DEFAULT_OPTIONS: GraphBuildOptions = {}
 
 type UseGraphParams = {
-  rootTxid: string
+  input: string
   depth?: number
-  options?: GraphBuildOptions
+  selectedRootTxid?: string | null
   reloadKey?: number
 }
 type GraphReloadRequest = {
-  rootTxid?: string
+  input?: string
   depth?: number
-  options?: GraphBuildOptions
+  selectedRootTxid?: string | null
   throwOnError?: boolean
 }
 
 type UseGraphResult = {
   graph: ProvenanceGraph | null
+  resolution: GraphInputResolution | null
   loading: boolean
   error: string | null
   reload: (request?: GraphReloadRequest) => Promise<void>
@@ -37,47 +41,30 @@ function toErrorMessage(error: unknown): string {
 }
 
 export function useGraph({
-  rootTxid,
+  input,
   depth = DEFAULT_DEPTH,
-  options,
+  selectedRootTxid = null,
   reloadKey = 0,
 }: UseGraphParams): UseGraphResult {
   const [graph, setGraph] = useState<ProvenanceGraph | null>(null)
+  const [resolution, setResolution] = useState<GraphInputResolution | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
-  const resolvedOptions = options ?? DEFAULT_OPTIONS
-  const trimmedRootTxid = rootTxid.trim()
-
-  const optionsKey = useMemo(() => {
-    try {
-      return JSON.stringify(resolvedOptions)
-    } catch {
-      return '{}'
-    }
-  }, [resolvedOptions])
+  const trimmedInput = input.trim()
 
   const reload = useCallback(async (request?: GraphReloadRequest) => {
     void reloadKey
-    const nextRootTxid = (request?.rootTxid ?? trimmedRootTxid).trim()
+    const nextInput = (request?.input ?? trimmedInput).trim()
     const nextDepth = request?.depth ?? depth
-    const nextOptionsKey = (() => {
-      if (!request?.options) {
-        return optionsKey
-      }
+    const nextSelectedRootTxid = (request?.selectedRootTxid ?? selectedRootTxid)?.trim() ?? null
 
-      try {
-        return JSON.stringify(request.options)
-      } catch {
-        return '{}'
-      }
-    })()
-
-    if (!nextRootTxid) {
+    if (!nextInput) {
       requestIdRef.current += 1
       setLoading(false)
       setError(null)
       setGraph(null)
+      setResolution(null)
       return
     }
 
@@ -86,39 +73,42 @@ export function useGraph({
     setError(null)
 
     try {
-      const parsedOptions = JSON.parse(nextOptionsKey) as GraphBuildOptions
-      console.info('[provenance-ui] cmd_build_graph:start', {
-        rootTxid: nextRootTxid,
+      console.info('[provenance-ui] cmd_build_graph_from_input:start', {
+        input: nextInput,
         depth: nextDepth,
-        options: parsedOptions,
+        selectedRootTxid: nextSelectedRootTxid,
       })
-      const graphPayload = await invoke<ProvenanceGraph>('cmd_build_graph', {
-        rootTxid: nextRootTxid,
-        depth: nextDepth,
-        options: parsedOptions,
-        _options: parsedOptions,
+      const response = await invoke<GraphInputBuildResponse>('cmd_build_graph_from_input', {
+        args: {
+          input: nextInput,
+          depth: nextDepth,
+          selectedRootTxid: nextSelectedRootTxid,
+        },
       })
 
       if (requestId !== requestIdRef.current) {
         return
       }
-      console.info('[provenance-ui] cmd_build_graph:success', {
-        rootTxid: nextRootTxid,
+      console.info('[provenance-ui] cmd_build_graph_from_input:success', {
+        input: nextInput,
         depth: nextDepth,
+        requiresSelection: response.resolution.requires_selection,
       })
 
-      setGraph(graphPayload)
+      setResolution(response.resolution)
+      setGraph(response.graph ?? null)
     } catch (invokeError) {
       if (requestId !== requestIdRef.current) {
         return
       }
       const errorMessage = toErrorMessage(invokeError)
       console.error(
-        `[provenance-ui] cmd_build_graph:error rootTxid=${nextRootTxid} depth=${nextDepth} error=${errorMessage}`,
+        `[provenance-ui] cmd_build_graph_from_input:error input=${nextInput} depth=${nextDepth} selectedRootTxid=${nextSelectedRootTxid} error=${errorMessage}`,
       )
-      console.error('[provenance-ui] cmd_build_graph:error', {
-        rootTxid: nextRootTxid,
+      console.error('[provenance-ui] cmd_build_graph_from_input:error', {
+        input: nextInput,
         depth: nextDepth,
+        selectedRootTxid: nextSelectedRootTxid,
         error: errorMessage,
       })
       setError(errorMessage)
@@ -130,7 +120,7 @@ export function useGraph({
         setLoading(false)
       }
     }
-  }, [depth, optionsKey, reloadKey, trimmedRootTxid])
+  }, [depth, reloadKey, selectedRootTxid, trimmedInput])
 
   useEffect(() => {
     void reload()
@@ -140,5 +130,5 @@ export function useGraph({
     }
   }, [reload])
 
-  return { graph, loading, error, reload }
+  return { graph, resolution, loading, error, reload }
 }

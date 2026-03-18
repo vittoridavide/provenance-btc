@@ -4,6 +4,7 @@ import './App.css'
 import DetailPanel from './components/DetailPanel'
 import GraphCanvas, { type GraphCanvasTopBarActions } from './components/GraphCanvas'
 import ImportExportCenter from './components/import-export/ImportExportCenter'
+import RootCandidatePicker from './components/RootCandidatePicker'
 import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
@@ -12,13 +13,14 @@ import type {
   Bip329ImportApplyResult,
   Bip329ImportConflictPolicy,
   Bip329ImportPreviewResponse,
+  GraphInputResolution,
   ProvenanceGraph,
   ReportExportRequest,
   ReportFileExportResult,
   ReportPreviewRequest,
   ReportPreviewResponse,
 } from './types/api'
-const DEFAULT_ROOT_TXID = import.meta.env.VITE_PROVENANCE_GRAPH_ROOT_TXID ?? ''
+const DEFAULT_SEARCH_INPUT = import.meta.env.VITE_PROVENANCE_GRAPH_ROOT_TXID ?? ''
 const COMPACT_LAYOUT_MAX_WIDTH = 1400
 const SIDEBAR_COLLAPSE_MAX_WIDTH = 1200
 const DETAIL_COLLAPSE_MAX_WIDTH = 1024
@@ -174,7 +176,10 @@ function App() {
     workspacePreset.defaultSidebarCollapsed,
   )
   const [detailCollapsed, setDetailCollapsed] = useState(workspacePreset.defaultDetailCollapsed)
-  const [rootTxid, setRootTxid] = useState(DEFAULT_ROOT_TXID)
+  const [submittedSearchInput, setSubmittedSearchInput] = useState(DEFAULT_SEARCH_INPUT)
+  const [selectedRootTxid, setSelectedRootTxid] = useState<string | null>(null)
+  const [graphResolution, setGraphResolution] = useState<GraphInputResolution | null>(null)
+  const [activeRootTxid, setActiveRootTxid] = useState<string | null>(null)
   const [graphReloadKey, setGraphReloadKey] = useState(0)
   const [selectedTxid, setSelectedTxid] = useState<string | null>(null)
   const [graphData, setGraphData] = useState<ProvenanceGraph | null>(null)
@@ -234,16 +239,30 @@ function App() {
     }
   }, [])
 
-  const handleSearchTxid = useCallback((nextRootTxid: string) => {
+  const handleSearchInput = useCallback((nextInput: string) => {
     if (!isRpcConfigured) {
       setIsRpcModalOpen(true)
       return
     }
-
-    setRootTxid(nextRootTxid)
+    setSubmittedSearchInput(nextInput)
+    setSelectedRootTxid(null)
+    setGraphResolution(null)
+    setActiveRootTxid(null)
     setSelectedTxid(null)
+    setGraphData(null)
     setGraphReloadKey((current) => current + 1)
   }, [isRpcConfigured])
+  const handleResolutionChange = useCallback((nextResolution: GraphInputResolution | null) => {
+    setGraphResolution(nextResolution)
+    setActiveRootTxid(nextResolution?.selected_root_txid ?? null)
+  }, [])
+  const handleSelectRootCandidate = useCallback((nextRootTxid: string) => {
+    setSelectedRootTxid(nextRootTxid)
+    setActiveRootTxid(null)
+    setSelectedTxid(null)
+    setGraphData(null)
+    setGraphReloadKey((current) => current + 1)
+  }, [])
   const handleSelectTxid = useCallback((nextSelectedTxid: string | null) => {
     setSelectedTxid(nextSelectedTxid)
 
@@ -334,6 +353,9 @@ function App() {
       setIsImportExportOpen(false)
       setSelectedTxid(null)
       setGraphData(null)
+      setGraphResolution(null)
+      setActiveRootTxid(null)
+      setSelectedRootTxid(null)
       setRpcConnectionSuccess('Connected successfully.')
       setIsRpcModalOpen(false)
       try {
@@ -363,13 +385,13 @@ function App() {
       const graphJson = await invoke<string>('cmd_export_graph_json', {
         graph: graphData,
       })
-      const exportTxid = rootTxid.trim() || 'graph'
+      const exportTxid = activeRootTxid?.trim() || 'graph'
       const fileName = `provenance-graph-${exportTxid}-${formatFileTimestamp()}.json`
       downloadTextFile(fileName, graphJson, 'application/json')
     } catch {
       // Intentionally ignore export failures to keep graph workflow non-blocking.
     }
-  }, [graphData, rootTxid])
+  }, [activeRootTxid, graphData])
   const handlePreviewLabelExport = useCallback(async () => {
     return await invoke<Bip329ExportResult>('cmd_preview_labels_export')
   }, [])
@@ -415,8 +437,8 @@ function App() {
   return (
     <div className="app-shell">
       <TopBar
-        rootTxid={rootTxid}
-        onSearchTxid={handleSearchTxid}
+        searchInput={submittedSearchInput}
+        onSearchInput={handleSearchInput}
         onOpenImportExport={() => {
           if (!isRpcConfigured) {
             setIsRpcModalOpen(true)
@@ -432,15 +454,27 @@ function App() {
           <div className="workspace-scroll">
             {isRpcConfigured ? (
               <div className={workspaceClassName}>
-                <GraphCanvas
-                  rootTxid={rootTxid}
-                  reloadKey={graphReloadKey}
-                  selectedTxid={selectedTxid}
-                  onSelectTxid={handleSelectTxid}
-                  onGraphDataChange={handleGraphDataChange}
-                  onRegisterViewActions={handleRegisterViewActions}
-                  onRegisterRefresh={handleRegisterGraphRefresh}
-                />
+                <div className="graph-workspace-column">
+                  {graphResolution?.requires_selection ? (
+                    <RootCandidatePicker
+                      resolution={graphResolution}
+                      selectedRootTxid={selectedRootTxid}
+                      onSelectRootTxid={handleSelectRootCandidate}
+                      loading={false}
+                    />
+                  ) : null}
+                  <GraphCanvas
+                    input={submittedSearchInput}
+                    selectedRootTxid={selectedRootTxid}
+                    reloadKey={graphReloadKey}
+                    selectedTxid={selectedTxid}
+                    onSelectTxid={handleSelectTxid}
+                    onResolutionChange={handleResolutionChange}
+                    onGraphDataChange={handleGraphDataChange}
+                    onRegisterViewActions={handleRegisterViewActions}
+                    onRegisterRefresh={handleRegisterGraphRefresh}
+                  />
+                </div>
                 <DetailPanel
                   selectedTxid={selectedTxid}
                   collapsed={detailCollapsed}
@@ -457,7 +491,7 @@ function App() {
       <ImportExportCenter
         isOpen={isImportExportOpen && isRpcConfigured}
         onClose={() => setIsImportExportOpen(false)}
-        rootTxid={rootTxid}
+        rootTxid={activeRootTxid ?? ''}
         onExportGraphJson={handleExportGraphJson}
         onPreviewReport={handlePreviewReport}
         onExportReport={handleExportReport}

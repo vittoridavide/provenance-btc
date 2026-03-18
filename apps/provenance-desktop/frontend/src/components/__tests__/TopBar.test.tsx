@@ -30,14 +30,14 @@ function setGraphSnapshot(patch: Partial<GraphControlsSnapshot> = {}) {
 type TopBarTestPropsOverrides = Partial<ComponentProps<typeof TopBar>>
 
 function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
-  const onSearchTxid = vi.fn()
+  const onSearchInput = vi.fn()
   const onOpenImportExport = vi.fn()
   const onOpenRpcSettings = vi.fn()
 
   const result = render(
     <TopBar
-      rootTxid={VALID_TXID}
-      onSearchTxid={onSearchTxid}
+      searchInput={VALID_TXID}
+      onSearchInput={onSearchInput}
       onOpenImportExport={onOpenImportExport}
       onOpenRpcSettings={onOpenRpcSettings}
       {...overrides}
@@ -46,7 +46,7 @@ function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
 
   return {
     ...result,
-    onSearchTxid,
+    onSearchInput,
     onOpenImportExport,
     onOpenRpcSettings,
   }
@@ -72,21 +72,40 @@ describe('TopBar', () => {
     expect(onOpenRpcSettings).toHaveBeenCalledTimes(1)
   })
 
-  it('submits a valid txid on Enter', async () => {
-    const { onSearchTxid } = renderTopBar({ rootTxid: '' })
+  it('submits a txid on Enter', async () => {
+    const { onSearchInput } = renderTopBar({ searchInput: '' })
     const user = userEvent.setup()
 
     await user.type(screen.getByPlaceholderText('txid / outpoint / address'), `${VALID_TXID}{enter}`)
-
-    expect(onSearchTxid).toHaveBeenCalledWith(VALID_TXID)
+    expect(onSearchInput).toHaveBeenCalledWith(VALID_TXID)
   })
 
-  it('does not submit an invalid txid', async () => {
-    const { onSearchTxid } = renderTopBar({ rootTxid: '' })
+  it('submits a non-txid address input', async () => {
+    const { onSearchInput } = renderTopBar({ searchInput: '' })
+    const user = userEvent.setup()
+    const address = 'bc1q8v7x0m4xfl6w6aw9f4f2z6qs2kg8y4mddt7h4x'
+
+    await user.type(screen.getByPlaceholderText('txid / outpoint / address'), `${address}{enter}`)
+
+    expect(onSearchInput).toHaveBeenCalledWith(address)
+  })
+
+  it('submits an outpoint input', async () => {
+    const { onSearchInput } = renderTopBar({ searchInput: '' })
+    const user = userEvent.setup()
+    const outpoint = `${VALID_TXID}:1`
+
+    await user.type(screen.getByPlaceholderText('txid / outpoint / address'), `${outpoint}{enter}`)
+
+    expect(onSearchInput).toHaveBeenCalledWith(outpoint)
+  })
+
+  it('does not submit empty input', async () => {
+    const { onSearchInput } = renderTopBar({ searchInput: '' })
     const user = userEvent.setup()
 
-    await user.type(screen.getByPlaceholderText('txid / outpoint / address'), `not-a-txid{enter}`)
+    await user.type(screen.getByPlaceholderText('txid / outpoint / address'), `   {enter}`)
 
-    expect(onSearchTxid).not.toHaveBeenCalled()
+    expect(onSearchInput).not.toHaveBeenCalled()
   })
 })

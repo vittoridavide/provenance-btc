@@ -350,7 +350,7 @@ function ImportExportCenter({
 
     if (!hasValidRootTxid) {
       setReportPreview(null)
-      setReportError('Load a graph by searching a valid root txid first.')
+      setReportError('Load a graph with a resolved root txid first.')
       return
     }
 
@@ -594,7 +594,7 @@ function ImportExportCenter({
                       <div className="import-export-center__path-chip">
                         <span className="import-export-center__path-chip-label">Graph context</span>
                         <span className="import-export-center__path-chip-value">
-                          root {normalizedRootTxid || 'not loaded'} · depth {depth}
+                          root {normalizedRootTxid || 'not resolved'} · depth {depth}
                         </span>
                       </div>
                     </div>
@@ -648,7 +648,7 @@ function ImportExportCenter({
                     <InfoFooter>
                       {hasValidRootTxid
                         ? `Scope is limited to the current graph for root ${normalizedRootTxid} at depth ${depth}.`
-                        : 'Load a valid graph first to preview or save a report.'}
+                        : 'Resolve a root txid from your search input first, then preview or save a report.'}
                     </InfoFooter>
 
                     {reportError ? (
@@ -691,7 +691,7 @@ function ImportExportCenter({
                     </div>
 
                     <InfoFooter>
-                      Exports the in-memory graph for the current root txid as a browser download.
+                      Exports the in-memory graph for the currently resolved root txid as a browser download.
                     </InfoFooter>
                   </article>
                 </div>

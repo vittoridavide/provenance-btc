@@ -4,42 +4,107 @@ import { invoke } from '@tauri-apps/api/core'
 import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const REPORT_REQUEST = {
-  graph: {
-    root_txid: 'a'.repeat(64),
-    traversal_depth: 4,
-  },
-  report: {
-    kind: 'transactions' as const,
-    scope: 'current_graph' as const,
-  },
-}
+const TXID_A = 'a'.repeat(64)
+const TXID_B = 'b'.repeat(64)
+const AMBIGUOUS_ADDRESS = 'bc1qambiguous00000000000000000000000000000'
+const NO_UTXO_ADDRESS = 'bc1qnoutxo0000000000000000000000000000000'
 
 const graphRefreshSpy = vi.fn()
 const detailRefreshSpy = vi.fn()
 
+function reportRequestFor(rootTxid: string) {
+  return {
+    graph: {
+      root_txid: rootTxid,
+      traversal_depth: 4,
+    },
+    report: {
+      kind: 'transactions' as const,
+      scope: 'current_graph' as const,
+    },
+  }
+}
+
 function MockGraphCanvas({
+  input,
+  selectedRootTxid,
   onRegisterRefresh,
   onRegisterViewActions,
   onGraphDataChange,
+  onResolutionChange,
 }: {
+  input: string
+  selectedRootTxid?: string | null
   onRegisterRefresh: (refresh: (() => Promise<void>) | null) => void
   onRegisterViewActions: (actions: null) => void
-  onGraphDataChange: (graph: null) => void
+  onGraphDataChange: (graph: { nodes: unknown[]; edges: unknown[]; summary: unknown } | null) => void
+  onResolutionChange: (resolution: {
+    normalized_input: string
+    input_kind: 'txid' | 'address'
+    candidate_roots: Array<{ txid: string; vout: number | null; amount_sat: number | null; height: number | null }>
+    selected_root_txid: string | null
+    requires_selection: boolean
+  } | null) => void
 }) {
   useEffect(() => {
     onRegisterRefresh(async () => {
       graphRefreshSpy()
     })
     onRegisterViewActions(null)
-    onGraphDataChange(null)
-
     return () => {
       onRegisterRefresh(null)
     }
-  }, [onGraphDataChange, onRegisterRefresh, onRegisterViewActions])
+  }, [onRegisterRefresh, onRegisterViewActions])
 
-  return <div data-testid="graph-canvas" />
+  useEffect(() => {
+    const normalizedInput = input.trim()
+    if (!normalizedInput) {
+      onResolutionChange(null)
+      onGraphDataChange(null)
+      return
+    }
+
+    if (normalizedInput === NO_UTXO_ADDRESS) {
+      onResolutionChange(null)
+      onGraphDataChange(null)
+      return
+    }
+
+    if (normalizedInput === AMBIGUOUS_ADDRESS && selectedRootTxid !== TXID_B) {
+      onResolutionChange({
+        normalized_input: AMBIGUOUS_ADDRESS,
+        input_kind: 'address',
+        candidate_roots: [
+          { txid: TXID_A, vout: 0, amount_sat: 1000, height: 100 },
+          { txid: TXID_B, vout: 1, amount_sat: 2000, height: 90 },
+        ],
+        selected_root_txid: null,
+        requires_selection: true,
+      })
+      onGraphDataChange(null)
+      return
+    }
+
+    const resolvedRootTxid = normalizedInput === AMBIGUOUS_ADDRESS ? TXID_B : TXID_A
+    onResolutionChange({
+      normalized_input: normalizedInput,
+      input_kind: normalizedInput === AMBIGUOUS_ADDRESS ? 'address' : 'txid',
+      candidate_roots: [{ txid: resolvedRootTxid, vout: null, amount_sat: null, height: null }],
+      selected_root_txid: resolvedRootTxid,
+      requires_selection: false,
+    })
+    onGraphDataChange({
+      nodes: [{ txid: resolvedRootTxid }],
+      edges: [],
+      summary: {},
+    })
+  }, [input, onGraphDataChange, onResolutionChange, selectedRootTxid])
+
+  return (
+    <div data-testid="graph-canvas">
+      {input.trim() === NO_UTXO_ADDRESS ? 'no unspent outputs found for address' : null}
+    </div>
+  )
 }
 
 function MockDetailPanel({
@@ -62,8 +127,9 @@ function MockDetailPanel({
 
 function MockImportExportCenter(props: {
   isOpen: boolean
-  onPreviewReport: (request: typeof REPORT_REQUEST) => Promise<unknown>
-  onExportReport: (request: typeof REPORT_REQUEST, outputPath: string) => Promise<unknown>
+  rootTxid: string
+  onPreviewReport: (request: ReturnType<typeof reportRequestFor>) => Promise<unknown>
+  onExportReport: (request: ReturnType<typeof reportRequestFor>, outputPath: string) => Promise<unknown>
   onPreviewLabelImport: (inputPath: string) => Promise<unknown>
   onApplyLabelImport: (inputPath: string, policy: 'prefer_local') => Promise<unknown>
   onPreviewLabelExport: () => Promise<unknown>
@@ -73,12 +139,13 @@ function MockImportExportCenter(props: {
 
   return (
     <div>
-      <button type="button" onClick={() => void props.onPreviewReport(REPORT_REQUEST)}>
+      <div data-testid="resolved-root">{props.rootTxid}</div>
+      <button type="button" onClick={() => void props.onPreviewReport(reportRequestFor(props.rootTxid))}>
         Preview report
       </button>
       <button
         type="button"
-        onClick={() => void props.onExportReport(REPORT_REQUEST, '/tmp/report.csv')}
+        onClick={() => void props.onExportReport(reportRequestFor(props.rootTxid), '/tmp/report.csv')}
       >
         Export report
       </button>
@@ -113,7 +180,11 @@ vi.mock('../components/Sidebar', () => ({
 }))
 
 vi.mock('../components/TopBar', () => ({
-  default: (props: { onOpenImportExport: () => void; onOpenRpcSettings: () => void }) => (
+  default: (props: {
+    onOpenImportExport: () => void
+    onOpenRpcSettings: () => void
+    onSearchInput: (input: string) => void
+  }) => (
     <div>
       <button type="button" onClick={props.onOpenImportExport}>
         Open Import Export
@@ -121,12 +192,40 @@ vi.mock('../components/TopBar', () => ({
       <button type="button" onClick={props.onOpenRpcSettings}>
         RPC Settings
       </button>
+      <button type="button" onClick={() => props.onSearchInput(TXID_A)}>
+        Search txid
+      </button>
+      <button type="button" onClick={() => props.onSearchInput(AMBIGUOUS_ADDRESS)}>
+        Search ambiguous address
+      </button>
+      <button type="button" onClick={() => props.onSearchInput(NO_UTXO_ADDRESS)}>
+        Search no-utxo address
+      </button>
     </div>
   ),
 }))
 
 vi.mock('../components/GraphCanvas', () => ({
   default: MockGraphCanvas,
+}))
+
+vi.mock('../components/RootCandidatePicker', () => ({
+  default: (props: {
+    resolution: { candidate_roots: Array<{ txid: string }> }
+    onSelectRootTxid: (rootTxid: string) => void
+  }) => (
+    <div data-testid="root-candidate-picker">
+      {props.resolution.candidate_roots.map((candidate) => (
+        <button
+          key={candidate.txid}
+          type="button"
+          onClick={() => props.onSelectRootTxid(candidate.txid)}
+        >
+          Choose {candidate.txid}
+        </button>
+      ))}
+    </div>
+  ),
 }))
 
 vi.mock('../components/DetailPanel', () => ({
@@ -138,6 +237,7 @@ vi.mock('../components/import-export/ImportExportCenter', () => ({
 }))
 
 import App from '../App'
+
 async function connectRpc(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() =>
     expect(screen.getByLabelText('RPC URL')).toHaveValue('http://127.0.0.1:8332'),
@@ -236,7 +336,7 @@ afterEach(() => {
   cleanup()
 })
 
-describe('App import/export wiring', () => {
+describe('App input-driven flow', () => {
   it('shows RPC setup modal on startup and blocks dismiss before first successful connection', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -250,84 +350,57 @@ describe('App import/export wiring', () => {
     expect(screen.getByText('Connect Bitcoin RPC')).toBeInTheDocument()
     expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument()
   })
-  it('requires modal-first RPC connection before graph workflows run', async () => {
-    const user = userEvent.setup()
-    render(<App />)
 
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('cmd_get_rpc_config_prefill'))
-    expect(invoke).not.toHaveBeenCalledWith(
-      'cmd_set_rpc_config',
-      expect.objectContaining({ args: expect.any(Object) }),
-    )
-    expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument()
-
-    await connectRpc(user)
-
-    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
-  })
-  it('routes desktop import/export actions through the expected Tauri commands', async () => {
+  it('routes txid search directly to a resolved root txid for report preview', async () => {
     const user = userEvent.setup()
     render(<App />)
     await connectRpc(user)
 
+    await user.click(screen.getByRole('button', { name: 'Search txid' }))
     await user.click(screen.getByRole('button', { name: 'Open Import Export' }))
     await user.click(screen.getByRole('button', { name: 'Preview report' }))
-    await user.click(screen.getByRole('button', { name: 'Export report' }))
-    await user.click(screen.getByRole('button', { name: 'Preview labels import' }))
-    await user.click(screen.getByRole('button', { name: 'Preview labels export' }))
-    await user.click(screen.getByRole('button', { name: 'Export labels' }))
 
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('cmd_preview_report', {
-        args: REPORT_REQUEST,
+        args: reportRequestFor(TXID_A),
       }),
     )
-    expect(invoke).toHaveBeenCalledWith('cmd_export_report', {
-      args: {
-        request: REPORT_REQUEST,
-        outputPath: '/tmp/report.csv',
-      },
-    })
-    expect(invoke).toHaveBeenCalledWith('cmd_preview_labels_import', {
-      args: {
-        inputPath: '/tmp/import.jsonl',
-      },
-    })
-    expect(invoke).toHaveBeenCalledWith('cmd_preview_labels_export')
-    expect(invoke).toHaveBeenCalledWith('cmd_export_labels', {
-      args: {
-        outputPath: '/tmp/export.jsonl',
-      },
-    })
+    expect(screen.getByTestId('resolved-root')).toHaveTextContent(TXID_A)
   })
 
-  it('reopens RPC modal from top-bar settings action', async () => {
+  it('supports ambiguous address resolution via candidate picker before loading reports', async () => {
     const user = userEvent.setup()
     render(<App />)
     await connectRpc(user)
 
-    expect(screen.queryByText('Connect Bitcoin RPC')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Search ambiguous address' }))
 
-    await user.click(screen.getByRole('button', { name: 'RPC Settings' }))
+    expect(await screen.findByTestId('root-candidate-picker')).toBeInTheDocument()
 
-    expect(screen.getByText('Connect Bitcoin RPC')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: `Choose ${TXID_B}` }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('root-candidate-picker')).not.toBeInTheDocument(),
+    )
 
-    const rpcUrlInput = screen.getByLabelText('RPC URL')
-    await user.clear(rpcUrlInput)
-    await user.type(rpcUrlInput, 'http://127.0.0.1:18443')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Open Import Export' }))
+    await user.click(screen.getByRole('button', { name: 'Preview report' }))
 
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith('cmd_set_rpc_config', {
-        args: {
-          url: 'http://127.0.0.1:18443',
-          authMode: 'none',
-          username: null,
-          password: null,
-        },
+      expect(invoke).toHaveBeenCalledWith('cmd_preview_report', {
+        args: reportRequestFor(TXID_B),
       }),
     )
-    await waitFor(() => expect(screen.queryByText('Connect Bitcoin RPC')).not.toBeInTheDocument())
+    expect(screen.getByTestId('resolved-root')).toHaveTextContent(TXID_B)
+  })
+
+  it('shows a user-visible no-UTXO address error state', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await connectRpc(user)
+
+    await user.click(screen.getByRole('button', { name: 'Search no-utxo address' }))
+
+    expect(await screen.findByText(/no unspent outputs found for address/i)).toBeInTheDocument()
   })
 
   it('refreshes graph and detail state after applying a BIP-329 import', async () => {

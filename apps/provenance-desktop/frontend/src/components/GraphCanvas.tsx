@@ -22,7 +22,7 @@ import {
   type GraphLayoutMode,
   type TransactionVisibilityFilter,
 } from '../state/graphControls'
-import type { GraphSummary, ProvenanceGraph } from '../types/api'
+import type { GraphInputResolution, GraphSummary, ProvenanceGraph } from '../types/api'
 import { categoryColorHexByKey, resolveCategoryNodeStyle } from '../utils/categoryPalette'
 import {
   type GraphFlowEdge,
@@ -48,11 +48,13 @@ const DEFAULT_EDGE_STROKE = '#94a3b8'
 const CATEGORY_EDGE_OPACITY = 0.3
 
 type GraphCanvasProps = {
-  rootTxid: string
+  input: string
+  selectedRootTxid?: string | null
   reloadKey: number
   selectedTxid: string | null
   onSelectTxid: (txid: string | null) => void
   onGraphSummaryChange?: (summary: GraphSummary | null) => void
+  onResolutionChange?: (resolution: GraphInputResolution | null) => void
   onGraphDataChange?: (graph: ProvenanceGraph | null) => void
   onRegisterViewActions?: (actions: GraphCanvasTopBarActions | null) => void
   onRegisterRefresh?: (refresh: (() => Promise<void>) | null) => void
@@ -516,11 +518,13 @@ function GraphViewport({
 }
 
 function GraphCanvas({
-  rootTxid,
+  input,
+  selectedRootTxid = null,
   reloadKey,
   selectedTxid,
   onSelectTxid,
   onGraphSummaryChange,
+  onResolutionChange,
   onGraphDataChange,
   onRegisterViewActions,
   onRegisterRefresh,
@@ -553,19 +557,21 @@ function GraphCanvas({
     }
   }, [depth])
 
-  const { graph, loading, error, reload } = useGraph({
-    rootTxid,
+  const { graph, resolution, loading, error, reload } = useGraph({
+    input,
     depth: debouncedDepth,
+    selectedRootTxid,
     reloadKey,
   })
 
   const refreshGraph = useCallback(async () => {
     await reload({
-      rootTxid,
+      input,
       depth,
+      selectedRootTxid,
       throwOnError: true,
     })
-  }, [depth, reload, rootTxid])
+  }, [depth, input, reload, selectedRootTxid])
 
   useEffect(() => {
     onRegisterRefresh?.(refreshGraph)
@@ -581,6 +587,10 @@ function GraphCanvas({
   useEffect(() => {
     onGraphDataChange?.(graph ?? null)
   }, [graph, onGraphDataChange])
+
+  useEffect(() => {
+    onResolutionChange?.(resolution ?? null)
+  }, [onResolutionChange, resolution])
 
   const { nodes: fullAdaptedNodes, edges: fullAdaptedEdges } = useMemo(() => {
     if (!graph) {
@@ -631,11 +641,13 @@ function GraphCanvas({
   }, [error, loading])
 
   const hasGraphData = adaptedNodes.length > 0
-  const hasRootTxid = rootTxid.trim().length > 0
-  const showRootPrompt = !hasRootTxid && !loading && !graph
+  const hasInput = input.trim().length > 0
+  const requiresSelection = !!resolution?.requires_selection
+  const showRootPrompt = !hasInput && !loading && !graph
   const showLoadingOverlay = loading && !hasGraphData
-  const showEmptyGraph = !loading && !error && !!graph && adaptedNodes.length === 0
-  const showErrorOverlay = !!error && !hasGraphData
+  const showSelectionRequiredOverlay = !loading && !error && requiresSelection && !hasGraphData
+  const showEmptyGraph = !loading && !error && !!graph && !requiresSelection && adaptedNodes.length === 0
+  const showErrorOverlay = !!error && !hasGraphData && !showSelectionRequiredOverlay
   const showErrorBanner = !!error && hasGraphData
   const showRefreshingBanner = loading && hasGraphData
 
@@ -656,7 +668,7 @@ function GraphCanvas({
           <div className="graph-canvas__overlay">
             <div className="graph-canvas__state-card graph-canvas__state-card--empty ">
               <DatabaseIcon />
-              <strong>Search for a transaction to begin</strong>
+              <strong>Search by txid, outpoint, or address to begin</strong>
             </div>
           </div>
         )}
@@ -666,8 +678,19 @@ function GraphCanvas({
             <div className="graph-canvas__state-card surface-card state-tone state-tone--loading state-surface">
               <div className="graph-canvas__state-row">
                 <span className="spinner" aria-hidden="true" />
-                <strong>Loading transaction graph...</strong>
+                <strong>Loading provenance graph...</strong>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showSelectionRequiredOverlay && (
+          <div className="graph-canvas__overlay">
+            <div className="graph-canvas__state-card surface-card state-tone state-tone--empty state-surface">
+              <strong>Root selection required</strong>
+              <span>
+                Multiple unspent roots match this address. Select a candidate root to build the graph.
+              </span>
             </div>
           </div>
         )}

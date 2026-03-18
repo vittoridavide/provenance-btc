@@ -204,7 +204,7 @@ function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
                 <div className="sidebar__legend-group-items">
                   <LegendRow
                     marker={<span className="sidebar__legend-swatch sidebar__legend-swatch--root" />}
-                    label="Root (query tx)"
+                    label="Root (resolved input)"
                   />
                   <LegendRow
                     marker={<span className="sidebar__legend-swatch sidebar__legend-swatch--confirmed" />}

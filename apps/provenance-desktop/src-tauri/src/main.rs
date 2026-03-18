@@ -3,14 +3,15 @@
 use provenance_core::api::types::{
     Bip329ExportResult, Bip329ImportApplyRequest, Bip329ImportApplyResult,
     Bip329ImportConflictPolicy, Bip329ImportPreviewRequest, Bip329ImportPreviewResponse,
-    Classification, GraphBuildOptions, ProvenanceGraph, RefType, ReportExportRequest,
-    ReportManifest, ReportPreviewRequest, ReportPreviewResponse, ReportWarning, TransactionDetail,
-    TxInput, TxOutput,
+    Classification, GraphBuildOptions, GraphInputRequest, GraphInputResolution, ProvenanceGraph,
+    RefType, ReportExportRequest, ReportManifest, ReportPreviewRequest, ReportPreviewResponse,
+    ReportWarning, TransactionDetail, TxInput, TxOutput,
 };
 use provenance_core::api::{
-    apply_bip329_import as core_apply_bip329_import, export_bip329 as core_export_bip329,
-    export_report as core_export_report, preview_bip329_import as core_preview_bip329_import,
-    preview_report as core_preview_report,
+    apply_bip329_import as core_apply_bip329_import,
+    build_graph_export_context_from_input as core_build_graph_export_context_from_input,
+    export_bip329 as core_export_bip329, export_report as core_export_report,
+    preview_bip329_import as core_preview_bip329_import, preview_report as core_preview_report,
 };
 
 use provenance_core::model::tx_view::TxView;
@@ -224,6 +225,31 @@ struct ReportFileExportResult {
     warnings: Vec<ReportWarning>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildGraphFromInputArgs {
+    input: String,
+    depth: u32,
+    selected_root_txid: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct GraphInputBuildResponse {
+    resolution: GraphInputResolution,
+    graph: Option<ProvenanceGraph>,
+}
+
+fn map_graph_input_build_response(
+    response: provenance_core::api::types::GraphInputBuildResponse,
+) -> GraphInputBuildResponse {
+    GraphInputBuildResponse {
+        resolution: response.resolution,
+        graph: response
+            .graph_context
+            .map(|graph_context| graph_context.to_provenance_graph()),
+    }
+}
+
 #[tauri::command]
 fn cmd_set_rpc_config(
     state: tauri::State<'_, AppState>,
@@ -326,6 +352,42 @@ async fn cmd_core_status(state: tauri::State<'_, AppState>) -> Result<CoreStatus
     tauri::async_runtime::spawn_blocking(move || {
         let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
         rpc.status().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn cmd_build_graph_from_input(
+    state: tauri::State<'_, AppState>,
+    args: BuildGraphFromInputArgs,
+) -> Result<GraphInputBuildResponse, String> {
+    let cfg = get_rpc_config(&state)?;
+    let db_path = (*state.db_path).clone();
+    eprintln!(
+        "[provenance-app] cmd_build_graph_from_input input={} depth={} selected_root_txid={:?} rpc_url={}",
+        args.input, args.depth, args.selected_root_txid, cfg.url
+    );
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let rpc_url = cfg.url.clone();
+        let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
+        let db = open_db(&db_path)?;
+
+        let request = GraphInputRequest {
+            input: args.input,
+            traversal_depth: args.depth,
+            selected_root_txid: args.selected_root_txid,
+        };
+        let response = core_build_graph_export_context_from_input(&rpc, db.conn(), &request)
+            .map_err(|e| {
+                format!(
+                    "cmd_build_graph_from_input failed for input='{}' depth={} selected_root_txid={:?} rpc_url='{}': {e}",
+                    request.input, request.traversal_depth, request.selected_root_txid, rpc_url
+                )
+            })?;
+
+        Ok(map_graph_input_build_response(response))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -740,6 +802,7 @@ fn main() {
             cmd_core_status,
             cmd_fetch_tx,
             cmd_build_graph,
+            cmd_build_graph_from_input,
             cmd_get_tx_detail,
             cmd_set_label,
             cmd_delete_label,
@@ -760,8 +823,12 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_rpc_config_prefill, parse_rpc_auth, read_text_file, save_rpc_config_prefill,
-        write_text_file, RpcAuthMode, RpcConfigPrefill,
+        load_rpc_config_prefill, map_graph_input_build_response, parse_rpc_auth, read_text_file,
+        save_rpc_config_prefill, write_text_file, RpcAuthMode, RpcConfigPrefill,
+    };
+    use provenance_core::api::types::{
+        GraphInputBuildResponse as CoreGraphInputBuildResponse, GraphInputKind,
+        GraphInputResolution,
     };
     use provenance_core::rpc::client::RpcAuth;
     use std::fs;
@@ -888,5 +955,26 @@ mod tests {
             .expect("missing prefill should return default payload");
 
         assert_eq!(loaded, RpcConfigPrefill::default());
+    }
+
+    #[test]
+    fn graph_input_response_mapping_preserves_resolution_without_graph_context() {
+        let core_response = CoreGraphInputBuildResponse {
+            resolution: GraphInputResolution {
+                normalized_input: "1BoatSLRHtKNngkdXEeobR76b53LETtpyT".to_string(),
+                input_kind: GraphInputKind::Address,
+                candidate_roots: Vec::new(),
+                selected_root_txid: None,
+                requires_selection: true,
+            },
+            graph_context: None,
+        };
+
+        let mapped = map_graph_input_build_response(core_response);
+
+        assert!(mapped.graph.is_none());
+        assert!(mapped.resolution.requires_selection);
+        assert_eq!(mapped.resolution.selected_root_txid, None);
+        assert_eq!(mapped.resolution.input_kind, GraphInputKind::Address);
     }
 }

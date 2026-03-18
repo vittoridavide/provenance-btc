@@ -6,8 +6,6 @@ import {
 } from '../state/graphControls'
 import provenanceLogo from '../assets/provenance.svg'
 
-const TXID_PATTERN = /^[0-9a-fA-F]{64}$/
-
 function SearchIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -18,15 +16,15 @@ function SearchIcon() {
 }
 
 type TopBarProps = {
-  rootTxid: string
-  onSearchTxid: (txid: string) => void
+  searchInput: string
+  onSearchInput: (input: string) => void
   onOpenImportExport: () => void
   onOpenRpcSettings: () => void
 }
 
 function TopBar({
-  rootTxid,
-  onSearchTxid,
+  searchInput: submittedInput,
+  onSearchInput,
   onOpenImportExport,
   onOpenRpcSettings,
 }: TopBarProps) {
@@ -35,18 +33,18 @@ function TopBar({
     getGraphControlsSnapshot,
     getGraphControlsSnapshot,
   )
-  const [searchInput, setSearchInput] = useState(rootTxid)
+  const [searchInput, setSearchInput] = useState(submittedInput)
 
   useEffect(() => {
-    setSearchInput(rootTxid)
-  }, [rootTxid])
+    setSearchInput(submittedInput)
+  }, [submittedInput])
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const normalized = searchInput.trim().toLowerCase()
-    if (!TXID_PATTERN.test(normalized)) return
+    const normalized = searchInput.trim()
+    if (!normalized) return
     setSearchInput(normalized)
-    onSearchTxid(normalized)
+    onSearchInput(normalized)
   }
 
 
