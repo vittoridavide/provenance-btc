@@ -1,5 +1,5 @@
 use bitcoin::consensus::encode::deserialize;
-use bitcoin::{Network, Transaction, Txid};
+use bitcoin::{Amount, Network, Transaction, Txid};
 
 use crate::error::{CoreError, Result};
 use crate::model::helpers::{address_from_spk, classify_script_type, network_from_chain};
@@ -47,6 +47,96 @@ impl WarningsField {
             WarningsField::Str(s) => s,
             WarningsField::List(list) => list.join("; "),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_scantxoutset_candidates, ScanTxOutSetUnspent};
+
+    #[test]
+    fn scantxoutset_candidates_are_sorted_deterministically() {
+        let raw = vec![
+            ScanTxOutSetUnspent {
+                txid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    .to_string(),
+                vout: 3,
+                amount: 0.00000005,
+                height: Some(10),
+            },
+            ScanTxOutSetUnspent {
+                txid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_string(),
+                vout: 2,
+                amount: 0.00000001,
+                height: Some(15),
+            },
+            ScanTxOutSetUnspent {
+                txid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_string(),
+                vout: 1,
+                amount: 0.00000002,
+                height: Some(15),
+            },
+            ScanTxOutSetUnspent {
+                txid: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                    .to_string(),
+                vout: 0,
+                amount: 0.00000003,
+                height: None,
+            },
+        ];
+
+        let candidates =
+            parse_scantxoutset_candidates(raw).expect("candidate parsing and sorting should work");
+
+        assert_eq!(candidates.len(), 4);
+        assert_eq!(
+            candidates.iter().map(|c| c.height).collect::<Vec<_>>(),
+            vec![Some(15), Some(15), Some(10), None]
+        );
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|c| c.txid.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            ]
+        );
+        assert_eq!(
+            candidates.iter().map(|c| c.vout).collect::<Vec<_>>(),
+            vec![1, 2, 3, 0]
+        );
+    }
+
+    #[test]
+    fn scantxoutset_candidate_amount_is_converted_to_sat() {
+        let raw = vec![ScanTxOutSetUnspent {
+            txid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            vout: 0,
+            amount: 0.12345678,
+            height: Some(1),
+        }];
+
+        let candidates = parse_scantxoutset_candidates(raw).expect("amount conversion should work");
+        assert_eq!(candidates[0].amount_sat, 12_345_678);
+    }
+
+    #[test]
+    fn scantxoutset_candidate_rejects_invalid_txid() {
+        let raw = vec![ScanTxOutSetUnspent {
+            txid: "not-a-txid".to_string(),
+            vout: 0,
+            amount: 0.00000001,
+            height: Some(1),
+        }];
+
+        let err = parse_scantxoutset_candidates(raw).expect_err("invalid txid should fail");
+        assert!(err.to_string().contains("invalid txid"));
     }
 }
 
@@ -142,6 +232,84 @@ impl JsonRpcError {
             None => format!("JSON-RPC error {}: {}", self.code, self.message),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressUtxoCandidate {
+    pub txid: String,
+    pub vout: u32,
+    pub amount_sat: u64,
+    pub height: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScanTxOutSetResponse {
+    success: bool,
+    #[serde(default)]
+    unspents: Vec<ScanTxOutSetUnspent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScanTxOutSetUnspent {
+    txid: String,
+    vout: u32,
+    amount: f64,
+    #[serde(default)]
+    height: Option<u64>,
+}
+
+fn parse_scantxoutset_candidates(
+    unspents: Vec<ScanTxOutSetUnspent>,
+) -> Result<Vec<AddressUtxoCandidate>> {
+    let mut candidates = Vec::with_capacity(unspents.len());
+
+    for unspent in unspents {
+        let txid = unspent
+            .txid
+            .parse::<Txid>()
+            .map_err(|e| {
+                CoreError::Rpc(format!(
+                    "scantxoutset returned invalid txid '{}': {e}",
+                    unspent.txid
+                ))
+            })?
+            .to_string();
+
+        let amount_sat = Amount::from_btc(unspent.amount)
+            .map_err(|e| {
+                CoreError::Rpc(format!(
+                    "scantxoutset returned invalid amount '{}' for outpoint {}:{}: {e}",
+                    unspent.amount, txid, unspent.vout
+                ))
+            })?
+            .to_sat();
+
+        let height = match unspent.height {
+            Some(raw_height) => Some(u32::try_from(raw_height).map_err(|_| {
+                CoreError::Rpc(format!(
+                    "scantxoutset returned out-of-range height '{raw_height}'"
+                ))
+            })?),
+            None => None,
+        };
+
+        candidates.push(AddressUtxoCandidate {
+            txid,
+            vout: unspent.vout,
+            amount_sat,
+            height,
+        });
+    }
+
+    candidates.sort_by(|left, right| {
+        right
+            .height
+            .cmp(&left.height)
+            .then_with(|| left.txid.cmp(&right.txid))
+            .then_with(|| left.vout.cmp(&right.vout))
+    });
+
+    Ok(candidates)
 }
 
 pub struct CoreRpc {
@@ -270,6 +438,20 @@ impl CoreRpc {
             .parse()
             .map_err(|e| CoreError::Other(format!("Invalid txid: {e}")))?;
         self.get_raw_transaction_hex(&txid)
+    }
+
+    /// Resolve currently unspent outputs for an address using `scantxoutset`.
+    pub fn scan_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxoCandidate>> {
+        let params = serde_json::json!(["start", [format!("addr({address})")]]);
+        let response: ScanTxOutSetResponse = self.call("scantxoutset", params)?;
+
+        if !response.success {
+            return Err(CoreError::Rpc(format!(
+                "scantxoutset scan failed for address '{address}'"
+            )));
+        }
+
+        parse_scantxoutset_candidates(response.unspents)
     }
 
     fn fetch_tx_verbose(&self, txid: &Txid) -> Result<serde_json::Value> {
