@@ -9,9 +9,9 @@ pub use crate::bip329::{
     ImportReport as Bip329ImportApplyResult,
 };
 pub use crate::reporting::{
-    GeneratedReport as ReportExportResult, GraphExportContextRequest, ReportIssueCode, ReportKind,
-    ReportManifest, ReportPreview as ReportPreviewResponse, ReportRequest, ReportScope,
-    ReportSeverity, ReportWarning,
+    GeneratedReport as ReportExportResult, GraphExportContext, GraphExportContextRequest,
+    ReportIssueCode, ReportKind, ReportManifest, ReportPreview as ReportPreviewResponse,
+    ReportRequest, ReportScope, ReportSeverity, ReportWarning,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,6 +47,44 @@ impl RefType {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GraphBuildOptions {}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphInputKind {
+    Txid,
+    Outpoint,
+    Address,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GraphInputRequest {
+    pub input: String,
+    pub traversal_depth: u32,
+    #[serde(default)]
+    pub selected_root_txid: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GraphInputCandidateRoot {
+    pub txid: String,
+    pub vout: Option<u32>,
+    pub amount_sat: Option<u64>,
+    pub height: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GraphInputResolution {
+    pub normalized_input: String,
+    pub input_kind: GraphInputKind,
+    pub candidate_roots: Vec<GraphInputCandidateRoot>,
+    pub selected_root_txid: Option<String>,
+    pub requires_selection: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GraphInputBuildResponse {
+    pub resolution: GraphInputResolution,
+    pub graph_context: Option<GraphExportContext>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Classification {
@@ -191,9 +229,10 @@ mod tests {
         Bip329ImportPreviewRequest, Bip329ImportPreviewResponse,
     };
     use super::{
-        GraphExportContextRequest, RefType, ReportExportRequest, ReportIssueCode, ReportKind,
-        ReportManifest, ReportPreviewRequest, ReportPreviewResponse, ReportRequest, ReportScope,
-        ReportSeverity, ReportWarning,
+        GraphExportContextRequest, GraphInputBuildResponse, GraphInputCandidateRoot,
+        GraphInputKind, GraphInputRequest, GraphInputResolution, RefType, ReportExportRequest,
+        ReportIssueCode, ReportKind, ReportManifest, ReportPreviewRequest, ReportPreviewResponse,
+        ReportRequest, ReportScope, ReportSeverity, ReportWarning,
     };
 
     #[test]
@@ -259,6 +298,49 @@ mod tests {
         );
         assert_eq!(response_json["warnings"][0]["ref_type"], "output");
         assert_eq!(request_json["report"]["kind"], "outputs");
+    }
+
+    #[test]
+    fn api_graph_input_contract_serialization_matches_request_and_resolution_shapes() {
+        let request = GraphInputRequest {
+            input: "1BoatSLRHtKNngkdXEeobR76b53LETtpyT".to_string(),
+            traversal_depth: 3,
+            selected_root_txid: Some(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            ),
+        };
+        let response = GraphInputBuildResponse {
+            resolution: GraphInputResolution {
+                normalized_input: "1BoatSLRHtKNngkdXEeobR76b53LETtpyT".to_string(),
+                input_kind: GraphInputKind::Address,
+                candidate_roots: vec![GraphInputCandidateRoot {
+                    txid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        .to_string(),
+                    vout: Some(0),
+                    amount_sat: Some(1_000),
+                    height: Some(800_000),
+                }],
+                selected_root_txid: Some(
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+                ),
+                requires_selection: false,
+            },
+            graph_context: None,
+        };
+
+        let request_json = serde_json::to_value(&request).expect("request serializes");
+        let response_json = serde_json::to_value(&response).expect("response serializes");
+
+        assert_eq!(
+            request_json["selected_root_txid"],
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert_eq!(response_json["resolution"]["input_kind"], "address");
+        assert_eq!(
+            response_json["resolution"]["candidate_roots"][0]["amount_sat"],
+            1_000
+        );
+        assert_eq!(response_json["graph_context"], serde_json::Value::Null);
     }
 
     #[cfg(feature = "store-sqlite")]
