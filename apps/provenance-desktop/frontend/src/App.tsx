@@ -14,6 +14,7 @@ import type {
   Bip329ImportApplyResult,
   Bip329ImportConflictPolicy,
   Bip329ImportPreviewResponse,
+  GraphInputCandidateRoot,
   GraphInputResolution,
   ProvenanceGraph,
   ReportExportRequest,
@@ -179,6 +180,9 @@ function App() {
   const [detailCollapsed, setDetailCollapsed] = useState(workspacePreset.defaultDetailCollapsed)
   const [submittedSearchInput, setSubmittedSearchInput] = useState(DEFAULT_SEARCH_INPUT)
   const [selectedRootTxid, setSelectedRootTxid] = useState<string | null>(null)
+  const [isRootCandidateModalOpen, setIsRootCandidateModalOpen] = useState(false)
+  const [isAddressResolution, setIsAddressResolution] = useState(false)
+  const [addressRootCandidates, setAddressRootCandidates] = useState<GraphInputCandidateRoot[]>([])
   const [graphResolution, setGraphResolution] = useState<GraphInputResolution | null>(null)
   const [activeRootTxid, setActiveRootTxid] = useState<string | null>(null)
   const [graphReloadKey, setGraphReloadKey] = useState(0)
@@ -254,6 +258,9 @@ function App() {
     }
     setSubmittedSearchInput(nextInput)
     setSelectedRootTxid(null)
+    setIsRootCandidateModalOpen(false)
+    setIsAddressResolution(false)
+    setAddressRootCandidates([])
     setGraphResolution(null)
     setActiveRootTxid(null)
     setSelectedTxid(null)
@@ -263,8 +270,28 @@ function App() {
   const handleResolutionChange = useCallback((nextResolution: GraphInputResolution | null) => {
     setGraphResolution(nextResolution)
     setActiveRootTxid(nextResolution?.selected_root_txid ?? null)
+    const isAddressInput = nextResolution?.input_kind === 'address'
+    setIsAddressResolution(isAddressInput)
+
+    if (!nextResolution || !isAddressInput) {
+      setAddressRootCandidates([])
+      setIsRootCandidateModalOpen(false)
+      return
+    }
+
+    setAddressRootCandidates((previousCandidates) => {
+      const nextCandidates = nextResolution.candidate_roots
+      if (nextCandidates.length > 1) return nextCandidates
+      if (previousCandidates.length > 1) return previousCandidates
+      return nextCandidates
+    })
+
+    if (nextResolution.requires_selection) {
+      setIsRootCandidateModalOpen(true)
+    }
   }, [])
   const handleSelectRootCandidate = useCallback((nextRootTxid: string) => {
+    setIsRootCandidateModalOpen(false)
     setSelectedRootTxid(nextRootTxid)
     setActiveRootTxid(null)
     setSelectedTxid(null)
@@ -361,6 +388,9 @@ function App() {
       setIsImportExportOpen(false)
       setSelectedTxid(null)
       setGraphData(null)
+      setIsRootCandidateModalOpen(false)
+      setIsAddressResolution(false)
+      setAddressRootCandidates([])
       setGraphResolution(null)
       setActiveRootTxid(null)
       setSelectedRootTxid(null)
@@ -443,6 +473,26 @@ function App() {
     },
     [],
   )
+  const rootCandidateResolution = useMemo<GraphInputResolution | null>(() => {
+    if (!isAddressResolution || addressRootCandidates.length === 0) {
+      return null
+    }
+
+    return {
+      normalized_input: graphResolution?.normalized_input ?? submittedSearchInput,
+      input_kind: 'address',
+      candidate_roots: addressRootCandidates,
+      selected_root_txid: selectedRootTxid ?? graphResolution?.selected_root_txid ?? null,
+      requires_selection: graphResolution?.requires_selection ?? false,
+    }
+  }, [
+    addressRootCandidates,
+    graphResolution,
+    isAddressResolution,
+    selectedRootTxid,
+    submittedSearchInput,
+  ])
+  const canChangeAddressRootTx = isAddressResolution && addressRootCandidates.length > 1
   return (
     <div className="app-shell">
       <TopBar
@@ -461,15 +511,23 @@ function App() {
         onOpenRpcSettings={() => setIsRpcModalOpen(true)}
       />
       <div className="content-row">
-        <Sidebar collapsed={sidebarCollapsed} selectedTxid={selectedTxid} onToggle={handleToggleSidebar} />
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          selectedTxid={selectedTxid}
+          showChangeRootTxButton={canChangeAddressRootTx}
+          onChangeRootTx={() => setIsRootCandidateModalOpen(true)}
+          onToggle={handleToggleSidebar}
+        />
         <div className="main-area">
           <div className="workspace-scroll">
             {isRpcConfigured ? (
               <div className={workspaceClassName}>
                 <div className="graph-workspace-column">
-                  {graphResolution?.requires_selection ? (
+                  {rootCandidateResolution ? (
                     <RootCandidatePicker
-                      resolution={graphResolution}
+                      resolution={rootCandidateResolution}
+                      isOpen={isRootCandidateModalOpen}
+                      onOpenChange={setIsRootCandidateModalOpen}
                       selectedRootTxid={selectedRootTxid}
                       onSelectRootTxid={handleSelectRootCandidate}
                       loading={false}

@@ -9,6 +9,8 @@ import {
 type SidebarProps = {
   collapsed?: boolean
   selectedTxid: string | null
+  showChangeRootTxButton?: boolean
+  onChangeRootTx?: () => void
   onToggle?: () => void
 }
 
@@ -105,7 +107,12 @@ function CollapseIcon() {
   )
 }
 
-function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
+function Sidebar({
+  collapsed = false,
+  showChangeRootTxButton = false,
+  onChangeRootTx,
+  onToggle,
+}: SidebarProps) {
   const { depth, showTransactions, colorByCategory } = useSyncExternalStore(
     subscribeGraphControls,
     getGraphControlsSnapshot,
@@ -158,6 +165,19 @@ function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
               }}
             />
           </div>
+
+          {showChangeRootTxButton && onChangeRootTx ? (
+            <div className="sidebar__field">
+              <span className="sidebar__field-label">Address root</span>
+              <button
+                type="button"
+                className="sidebar__root-switch-button control-button"
+                onClick={onChangeRootTx}
+              >
+                Change root tx
+              </button>
+            </div>
+          ) : null}
         </section>
 
         <div className="sidebar__divider" />

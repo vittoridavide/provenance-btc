@@ -136,6 +136,12 @@
   accent-color: rgb(var(--theme-accent));
 }
 
+.sidebar__root-switch-button {
+  width: fit-content;
+  max-width: 100%;
+  height: 34px;
+}
+
 .sidebar__range-labels {
   display: flex;
   justify-content: space-between;

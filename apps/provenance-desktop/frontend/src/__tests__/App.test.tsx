@@ -176,7 +176,18 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 vi.mock('../components/Sidebar', () => ({
-  default: () => <div data-testid="sidebar" />,
+  default: (props: {
+    showChangeRootTxButton?: boolean
+    onChangeRootTx?: () => void
+  }) => (
+    <div data-testid="sidebar">
+      {props.showChangeRootTxButton ? (
+        <button type="button" onClick={props.onChangeRootTx}>
+          Change root tx
+        </button>
+      ) : null}
+    </div>
+  ),
 }))
 
 vi.mock('../components/TopBar', () => ({
@@ -211,21 +222,23 @@ vi.mock('../components/GraphCanvas', () => ({
 
 vi.mock('../components/RootCandidatePicker', () => ({
   default: (props: {
+    isOpen: boolean
     resolution: { candidate_roots: Array<{ txid: string }> }
     onSelectRootTxid: (rootTxid: string) => void
-  }) => (
-    <div data-testid="root-candidate-picker">
-      {props.resolution.candidate_roots.map((candidate) => (
-        <button
-          key={candidate.txid}
-          type="button"
-          onClick={() => props.onSelectRootTxid(candidate.txid)}
-        >
-          Choose {candidate.txid}
-        </button>
-      ))}
-    </div>
-  ),
+  }) =>
+    props.isOpen ? (
+      <div data-testid="root-candidate-picker">
+        {props.resolution.candidate_roots.map((candidate) => (
+          <button
+            key={candidate.txid}
+            type="button"
+            onClick={() => props.onSelectRootTxid(candidate.txid)}
+          >
+            Choose {candidate.txid}
+          </button>
+        ))}
+      </div>
+    ) : null,
 }))
 
 vi.mock('../components/DetailPanel', () => ({
@@ -396,6 +409,23 @@ describe('App input-driven flow', () => {
       }),
     )
     expect(screen.getByTestId('resolved-root')).toHaveTextContent(TXID_B)
+  })
+
+  it('reopens the root candidate picker from sidebar after selecting an address root', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await connectRpc(user)
+
+    await user.click(screen.getByRole('button', { name: 'Search ambiguous address' }))
+    expect(await screen.findByTestId('root-candidate-picker')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: `Choose ${TXID_B}` }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('root-candidate-picker')).not.toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Change root tx' }))
+    expect(await screen.findByTestId('root-candidate-picker')).toBeInTheDocument()
   })
 
   it('shows a user-visible no-UTXO address error state', async () => {
