@@ -1,13 +1,18 @@
 pub mod input_resolver;
 pub mod types;
 
-use self::input_resolver::{resolve_graph_input, InputResolverProvider};
+use self::input_resolver::{
+    resolve_graph_input, CapabilityProvider, InputResolverProvider,
+    ADDRESS_INPUT_UNAVAILABLE_REASON,
+};
 use rusqlite::Connection;
 
 use crate::reporting::{self, build_graph_export_context, GraphExportContext, TxViewProvider};
 use crate::{CoreError, Result};
 
-pub fn build_graph_export_context_from_input<P: TxViewProvider + InputResolverProvider>(
+pub fn build_graph_export_context_from_input<
+    P: TxViewProvider + InputResolverProvider + CapabilityProvider,
+>(
     rpc: &P,
     conn: &Connection,
     request: &types::GraphInputRequest,
@@ -35,6 +40,24 @@ pub fn build_graph_export_context_from_input<P: TxViewProvider + InputResolverPr
     Ok(types::GraphInputBuildResponse {
         resolution,
         graph_context: Some(context),
+    })
+}
+
+pub fn get_graph_input_capabilities(
+    rpc: &(impl InputResolverProvider + CapabilityProvider),
+) -> Result<types::GraphInputCapabilities> {
+    let mut supported_input_kinds =
+        vec![types::GraphInputKind::Txid, types::GraphInputKind::Outpoint];
+    let address_unavailable_reason = if rpc.supports_scantxoutset()? {
+        supported_input_kinds.push(types::GraphInputKind::Address);
+        None
+    } else {
+        Some(ADDRESS_INPUT_UNAVAILABLE_REASON.to_string())
+    };
+
+    Ok(types::GraphInputCapabilities {
+        supported_input_kinds,
+        address_unavailable_reason,
     })
 }
 
@@ -102,7 +125,9 @@ pub fn export_bip329(conn: &Connection) -> Result<types::Bip329ExportResult> {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::api::input_resolver::InputResolverProvider;
+    use crate::api::input_resolver::{
+        CapabilityProvider, InputResolverProvider, ADDRESS_INPUT_UNAVAILABLE_REASON,
+    };
     use crate::api::types::GraphInputRequest;
     use crate::model::tx_view::{TxOutView, TxView};
     use crate::reporting::{build_graph_export_context, GraphExportContextRequest, TxViewProvider};
@@ -110,7 +135,7 @@ mod tests {
     use crate::store::db::Database;
     use crate::{CoreError, Result};
 
-    use super::build_graph_export_context_from_input;
+    use super::{build_graph_export_context_from_input, get_graph_input_capabilities};
 
     const TXID_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const TXID_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -119,6 +144,7 @@ mod tests {
     struct FakeProvider {
         tx_views: HashMap<String, TxView>,
         address_candidates: HashMap<String, Vec<AddressUtxoCandidate>>,
+        scantxoutset_supported: bool,
     }
 
     impl TxViewProvider for FakeProvider {
@@ -140,12 +166,19 @@ mod tests {
         }
     }
 
+    impl CapabilityProvider for FakeProvider {
+        fn supports_scantxoutset(&self) -> Result<bool> {
+            Ok(self.scantxoutset_supported)
+        }
+    }
+
     #[test]
     fn graph_input_txid_flow_matches_existing_graph_context_builder() {
         let db = Database::open(":memory:").expect("db opens");
         let provider = FakeProvider {
             tx_views: HashMap::from([(TXID_A.to_string(), tx_view(TXID_A))]),
             address_candidates: HashMap::new(),
+            scantxoutset_supported: false,
         };
 
         let request = GraphInputRequest {
@@ -193,6 +226,7 @@ mod tests {
                     },
                 ],
             )]),
+            scantxoutset_supported: true,
         };
         let request = GraphInputRequest {
             input: ADDRESS.to_string(),
@@ -231,6 +265,7 @@ mod tests {
                     },
                 ],
             )]),
+            scantxoutset_supported: true,
         };
         let request = GraphInputRequest {
             input: ADDRESS.to_string(),
@@ -252,6 +287,52 @@ mod tests {
                 .as_ref()
                 .map(|context| context.root_txid.as_str()),
             Some(TXID_B)
+        );
+    }
+
+    #[test]
+    fn graph_input_capabilities_include_address_when_supported() {
+        let provider = FakeProvider {
+            tx_views: HashMap::new(),
+            address_candidates: HashMap::new(),
+            scantxoutset_supported: true,
+        };
+
+        let capabilities =
+            get_graph_input_capabilities(&provider).expect("capabilities should load");
+
+        assert_eq!(
+            capabilities.supported_input_kinds,
+            vec![
+                crate::api::types::GraphInputKind::Txid,
+                crate::api::types::GraphInputKind::Outpoint,
+                crate::api::types::GraphInputKind::Address,
+            ]
+        );
+        assert!(capabilities.address_unavailable_reason.is_none());
+    }
+
+    #[test]
+    fn graph_input_capabilities_exclude_address_when_unsupported() {
+        let provider = FakeProvider {
+            tx_views: HashMap::new(),
+            address_candidates: HashMap::new(),
+            scantxoutset_supported: false,
+        };
+
+        let capabilities =
+            get_graph_input_capabilities(&provider).expect("capabilities should load");
+
+        assert_eq!(
+            capabilities.supported_input_kinds,
+            vec![
+                crate::api::types::GraphInputKind::Txid,
+                crate::api::types::GraphInputKind::Outpoint,
+            ]
+        );
+        assert_eq!(
+            capabilities.address_unavailable_reason.as_deref(),
+            Some(ADDRESS_INPUT_UNAVAILABLE_REASON)
         );
     }
 

@@ -80,6 +80,12 @@ pub struct GraphInputResolution {
     pub requires_selection: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GraphInputCapabilities {
+    pub supported_input_kinds: Vec<GraphInputKind>,
+    pub address_unavailable_reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GraphInputBuildResponse {
     pub resolution: GraphInputResolution,

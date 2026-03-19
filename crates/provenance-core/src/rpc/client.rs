@@ -52,7 +52,11 @@ impl WarningsField {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_scantxoutset_candidates, ScanTxOutSetUnspent};
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use super::{parse_scantxoutset_candidates, CoreRpc, RpcAuth, RpcConfig, ScanTxOutSetUnspent};
 
     #[test]
     fn scantxoutset_candidates_are_sorted_deterministically() {
@@ -137,6 +141,97 @@ mod tests {
 
         let err = parse_scantxoutset_candidates(raw).expect_err("invalid txid should fail");
         assert!(err.to_string().contains("invalid txid"));
+    }
+
+    #[test]
+    fn supports_scantxoutset_returns_true_when_status_succeeds() {
+        let (url, server) =
+            spawn_json_rpc_server_once(200, "{\"result\":null,\"error\":null}".to_string());
+        let rpc = core_rpc_for_test(url);
+
+        let supported = rpc
+            .supports_scantxoutset()
+            .expect("successful status probe should return support");
+
+        assert!(supported);
+        server.join().expect("test server joins");
+    }
+
+    #[test]
+    fn supports_scantxoutset_returns_false_when_method_is_unavailable() {
+        let (url, server) = spawn_json_rpc_server_once(
+            200,
+            "{\"result\":null,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}"
+                .to_string(),
+        );
+        let rpc = core_rpc_for_test(url);
+
+        let supported = rpc
+            .supports_scantxoutset()
+            .expect("method unavailable should map to unsupported");
+
+        assert!(!supported);
+        server.join().expect("test server joins");
+    }
+
+    #[test]
+    fn supports_scantxoutset_returns_false_when_method_is_forbidden_or_disabled() {
+        let (url, server) = spawn_json_rpc_server_once(
+            200,
+            "{\"result\":null,\"error\":{\"code\":-1,\"message\":\"scantxoutset is disabled on this node\"}}"
+                .to_string(),
+        );
+        let rpc = core_rpc_for_test(url);
+
+        let supported = rpc
+            .supports_scantxoutset()
+            .expect("disabled scantxoutset should map to unsupported");
+
+        assert!(!supported);
+        server.join().expect("test server joins");
+    }
+
+    fn core_rpc_for_test(url: String) -> CoreRpc {
+        CoreRpc::new(&RpcConfig {
+            url,
+            auth: RpcAuth::None,
+        })
+        .expect("rpc client should initialize")
+    }
+
+    fn spawn_json_rpc_server_once(
+        status_code: u16,
+        body: String,
+    ) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener binds");
+        let addr = listener
+            .local_addr()
+            .expect("listener local addr available");
+
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("server accepts request");
+            let mut request = [0_u8; 8 * 1024];
+            let _ = stream.read(&mut request);
+
+            let status_text = match status_code {
+                200 => "OK",
+                401 => "Unauthorized",
+                403 => "Forbidden",
+                500 => "Internal Server Error",
+                _ => "OK",
+            };
+            let response = format!(
+                "HTTP/1.1 {status_code} {status_text}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("server writes response");
+            stream.flush().expect("server flushes response");
+        });
+
+        (format!("http://{addr}"), server)
     }
 }
 
@@ -232,6 +327,43 @@ impl JsonRpcError {
             None => format!("JSON-RPC error {}: {}", self.code, self.message),
         }
     }
+}
+
+fn parse_json_rpc_error_code(message: &str) -> Option<i64> {
+    let rest = message.strip_prefix("JSON-RPC error ")?;
+    let code = rest.split(':').next()?.trim();
+    code.parse::<i64>().ok()
+}
+
+fn is_scantxoutset_unavailable_error(message: &str) -> bool {
+    let Some(code) = parse_json_rpc_error_code(message) else {
+        return false;
+    };
+
+    if code == -32601 {
+        return true;
+    }
+
+    let lower = message.to_ascii_lowercase();
+    if !lower.contains("scantxoutset") {
+        return false;
+    }
+
+    let unavailable_markers = [
+        "forbidden",
+        "disabled",
+        "not enabled",
+        "not supported",
+        "not available",
+        "method not found",
+        "unknown command",
+        "denied",
+    ];
+
+    (code == -1 || code == -32603)
+        && unavailable_markers
+            .iter()
+            .any(|marker| lower.contains(marker))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -452,6 +584,19 @@ impl CoreRpc {
         }
 
         parse_scantxoutset_candidates(response.unspents)
+    }
+
+    /// Probe whether the configured backend supports `scantxoutset`.
+    pub fn supports_scantxoutset(&self) -> Result<bool> {
+        let params = serde_json::json!(["status"]);
+        match self.call::<Option<serde_json::Value>>("scantxoutset", params) {
+            Ok(_) => Ok(true),
+            Err(CoreError::Rpc(message)) if message == "RPC response missing result" => Ok(true),
+            Err(CoreError::Rpc(message)) if is_scantxoutset_unavailable_error(&message) => {
+                Ok(false)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn fetch_tx_verbose(&self, txid: &Txid) -> Result<serde_json::Value> {

@@ -15,11 +15,15 @@ function SearchIcon() {
   )
 }
 
+
 type TopBarProps = {
   searchInput: string
   onSearchInput: (input: string) => void
   onOpenImportExport: () => void
   onOpenRpcSettings: () => void
+  addressInputEnabled?: boolean
+  addressUnavailableReason?: string | null
+  isInputCapabilitiesLoading?: boolean
 }
 
 function TopBar({
@@ -27,7 +31,12 @@ function TopBar({
   onSearchInput,
   onOpenImportExport,
   onOpenRpcSettings,
+  addressInputEnabled = true,
+  addressUnavailableReason = null,
+  isInputCapabilitiesLoading = false,
 }: TopBarProps) {
+  void addressUnavailableReason
+  void isInputCapabilitiesLoading
   const { isGraphLoading } = useSyncExternalStore(
     subscribeGraphControls,
     getGraphControlsSnapshot,
@@ -46,6 +55,7 @@ function TopBar({
     setSearchInput(normalized)
     onSearchInput(normalized)
   }
+  const placeholder = addressInputEnabled ? 'txid / outpoint / address' : 'txid / outpoint'
 
 
   return (
@@ -63,7 +73,7 @@ function TopBar({
             className="top-bar__search-input"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="txid / outpoint / address"
+            placeholder={placeholder}
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"

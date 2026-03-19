@@ -8,6 +8,7 @@ import RootCandidatePicker from './components/RootCandidatePicker'
 import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
+import { useGraphInputCapabilities } from './hooks/useGraphInputCapabilities'
 import type {
   Bip329ExportResult,
   Bip329ImportApplyResult,
@@ -181,6 +182,7 @@ function App() {
   const [graphResolution, setGraphResolution] = useState<GraphInputResolution | null>(null)
   const [activeRootTxid, setActiveRootTxid] = useState<string | null>(null)
   const [graphReloadKey, setGraphReloadKey] = useState(0)
+  const [graphInputCapabilitiesReloadKey, setGraphInputCapabilitiesReloadKey] = useState(0)
   const [selectedTxid, setSelectedTxid] = useState<string | null>(null)
   const [graphData, setGraphData] = useState<ProvenanceGraph | null>(null)
   const [isImportExportOpen, setIsImportExportOpen] = useState(false)
@@ -197,6 +199,12 @@ function App() {
   const [isRpcConnecting, setIsRpcConnecting] = useState(false)
   const [rpcConnectionError, setRpcConnectionError] = useState<string | null>(null)
   const [rpcConnectionSuccess, setRpcConnectionSuccess] = useState<string | null>(null)
+  const { capabilities: graphInputCapabilities, loading: isGraphInputCapabilitiesLoading } =
+    useGraphInputCapabilities({
+      enabled: isRpcConfigured,
+      reloadKey: graphInputCapabilitiesReloadKey,
+    })
+  const addressInputEnabled = graphInputCapabilities.supported_input_kinds.includes('address')
 
   useEffect(() => {
     function handleResize() {
@@ -356,6 +364,7 @@ function App() {
       setGraphResolution(null)
       setActiveRootTxid(null)
       setSelectedRootTxid(null)
+      setGraphInputCapabilitiesReloadKey((current) => current + 1)
       setRpcConnectionSuccess('Connected successfully.')
       setIsRpcModalOpen(false)
       try {
@@ -439,6 +448,9 @@ function App() {
       <TopBar
         searchInput={submittedSearchInput}
         onSearchInput={handleSearchInput}
+        addressInputEnabled={addressInputEnabled}
+        addressUnavailableReason={graphInputCapabilities.address_unavailable_reason}
+        isInputCapabilitiesLoading={isGraphInputCapabilitiesLoading}
         onOpenImportExport={() => {
           if (!isRpcConfigured) {
             setIsRpcModalOpen(true)
@@ -465,6 +477,7 @@ function App() {
                   ) : null}
                   <GraphCanvas
                     input={submittedSearchInput}
+                    addressInputEnabled={addressInputEnabled}
                     selectedRootTxid={selectedRootTxid}
                     reloadKey={graphReloadKey}
                     selectedTxid={selectedTxid}

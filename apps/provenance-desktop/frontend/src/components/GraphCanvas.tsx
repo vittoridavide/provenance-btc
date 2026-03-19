@@ -49,6 +49,7 @@ const CATEGORY_EDGE_OPACITY = 0.3
 
 type GraphCanvasProps = {
   input: string
+  addressInputEnabled?: boolean
   selectedRootTxid?: string | null
   reloadKey: number
   selectedTxid: string | null
@@ -519,6 +520,7 @@ function GraphViewport({
 
 function GraphCanvas({
   input,
+  addressInputEnabled = true,
   selectedRootTxid = null,
   reloadKey,
   selectedTxid,
@@ -668,7 +670,11 @@ function GraphCanvas({
           <div className="graph-canvas__overlay">
             <div className="graph-canvas__state-card graph-canvas__state-card--empty ">
               <DatabaseIcon />
-              <strong>Search by txid, outpoint, or address to begin</strong>
+              <strong>
+                {addressInputEnabled
+                  ? 'Search by txid, outpoint, or address to begin'
+                  : 'Search by txid or outpoint to begin'}
+              </strong>
             </div>
           </div>
         )}

@@ -144,6 +144,11 @@ export interface GraphInputResolution {
   requires_selection: boolean
 }
 
+export interface GraphInputCapabilities {
+  supported_input_kinds: GraphInputKind[]
+  address_unavailable_reason: string | null
+}
+
 export type GraphExportContext = Record<string, unknown>
 
 export interface GraphInputBuildResponse {

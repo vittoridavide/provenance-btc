@@ -271,6 +271,11 @@ beforeEach(() => {
         })
       case 'cmd_set_rpc_config':
         return Promise.resolve(undefined)
+      case 'cmd_get_graph_input_capabilities':
+        return Promise.resolve({
+          supported_input_kinds: ['txid', 'outpoint', 'address'],
+          address_unavailable_reason: null,
+        })
       case 'cmd_preview_report':
         return Promise.resolve({
           manifest: {

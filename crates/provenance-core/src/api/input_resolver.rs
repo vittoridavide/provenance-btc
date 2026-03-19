@@ -10,6 +10,9 @@ use crate::{CoreError, Result};
 pub trait InputResolverProvider {
     fn scan_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxoCandidate>>;
 }
+pub trait CapabilityProvider {
+    fn supports_scantxoutset(&self) -> Result<bool>;
+}
 
 impl InputResolverProvider for CoreRpc {
     fn scan_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxoCandidate>> {
@@ -17,7 +20,22 @@ impl InputResolverProvider for CoreRpc {
     }
 }
 
-pub fn resolve_graph_input<P: InputResolverProvider>(
+impl CapabilityProvider for CoreRpc {
+    fn supports_scantxoutset(&self) -> Result<bool> {
+        self.supports_scantxoutset()
+    }
+}
+
+pub(crate) const ADDRESS_INPUT_UNAVAILABLE_REASON: &str =
+    "RPC backend does not support scantxoutset";
+
+pub(crate) fn address_input_unavailable_message() -> String {
+    format!(
+        "address input is unavailable: {ADDRESS_INPUT_UNAVAILABLE_REASON}; use txid or txid:vout"
+    )
+}
+
+pub fn resolve_graph_input<P: InputResolverProvider + CapabilityProvider>(
     provider: &P,
     request: &GraphInputRequest,
 ) -> Result<GraphInputResolution> {
@@ -63,6 +81,9 @@ pub fn resolve_graph_input<P: InputResolverProvider>(
             })
         }
         InputTarget::Address(address) => {
+            if !provider.supports_scantxoutset()? {
+                return Err(CoreError::Other(address_input_unavailable_message()));
+            }
             let candidates = provider.scan_address_utxos(&address)?;
             if candidates.is_empty() {
                 return Err(CoreError::Other(format!(
@@ -160,7 +181,10 @@ mod tests {
     use crate::api::types::GraphInputRequest;
     use crate::rpc::client::AddressUtxoCandidate;
 
-    use super::{resolve_graph_input, InputResolverProvider, Result};
+    use super::{
+        address_input_unavailable_message, resolve_graph_input, CapabilityProvider,
+        InputResolverProvider, Result,
+    };
 
     const TXID_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const TXID_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -168,6 +192,7 @@ mod tests {
 
     struct FakeResolverProvider {
         candidates_by_address: HashMap<String, Vec<AddressUtxoCandidate>>,
+        scantxoutset_supported: bool,
         fail_with: Option<String>,
     }
 
@@ -185,10 +210,17 @@ mod tests {
         }
     }
 
+    impl CapabilityProvider for FakeResolverProvider {
+        fn supports_scantxoutset(&self) -> Result<bool> {
+            Ok(self.scantxoutset_supported)
+        }
+    }
+
     #[test]
     fn resolve_txid_selects_single_root() {
         let provider = FakeResolverProvider {
             candidates_by_address: HashMap::new(),
+            scantxoutset_supported: false,
             fail_with: None,
         };
         let request = GraphInputRequest {
@@ -210,6 +242,7 @@ mod tests {
     fn resolve_outpoint_preserves_vout_metadata() {
         let provider = FakeResolverProvider {
             candidates_by_address: HashMap::new(),
+            scantxoutset_supported: false,
             fail_with: None,
         };
         let request = GraphInputRequest {
@@ -234,6 +267,7 @@ mod tests {
                     candidate(TXID_B, 1, 2, Some(90)),
                 ],
             )]),
+            scantxoutset_supported: true,
             fail_with: None,
         };
         let request = GraphInputRequest {
@@ -266,6 +300,7 @@ mod tests {
                     candidate(TXID_A, 1, 2, Some(100)),
                 ],
             )]),
+            scantxoutset_supported: true,
             fail_with: None,
         };
         let request = GraphInputRequest {
@@ -287,6 +322,7 @@ mod tests {
                 ADDRESS.to_string(),
                 vec![candidate(TXID_A, 0, 1, Some(100))],
             )]),
+            scantxoutset_supported: true,
             fail_with: None,
         };
         let request = GraphInputRequest {
@@ -305,6 +341,7 @@ mod tests {
     fn resolve_address_reports_no_match_with_utxo_only_context() {
         let provider = FakeResolverProvider {
             candidates_by_address: HashMap::new(),
+            scantxoutset_supported: true,
             fail_with: None,
         };
         let request = GraphInputRequest {
@@ -321,6 +358,7 @@ mod tests {
     fn resolve_address_propagates_rpc_failures() {
         let provider = FakeResolverProvider {
             candidates_by_address: HashMap::new(),
+            scantxoutset_supported: true,
             fail_with: Some("rpc unavailable".to_string()),
         };
         let request = GraphInputRequest {
@@ -331,6 +369,27 @@ mod tests {
 
         let err = resolve_graph_input(&provider, &request).expect_err("rpc failure should bubble");
         assert!(err.to_string().contains("rpc unavailable"));
+    }
+
+    #[test]
+    fn resolve_address_reports_explicit_error_when_capability_is_unavailable() {
+        let provider = FakeResolverProvider {
+            candidates_by_address: HashMap::new(),
+            scantxoutset_supported: false,
+            fail_with: None,
+        };
+        let request = GraphInputRequest {
+            input: ADDRESS.to_string(),
+            traversal_depth: 1,
+            selected_root_txid: None,
+        };
+
+        let err =
+            resolve_graph_input(&provider, &request).expect_err("unsupported address should fail");
+        assert_eq!(
+            err.to_string(),
+            format!("Other error: {}", address_input_unavailable_message())
+        );
     }
 
     fn candidate(

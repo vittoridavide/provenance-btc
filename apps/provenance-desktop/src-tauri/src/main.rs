@@ -3,14 +3,16 @@
 use provenance_core::api::types::{
     Bip329ExportResult, Bip329ImportApplyRequest, Bip329ImportApplyResult,
     Bip329ImportConflictPolicy, Bip329ImportPreviewRequest, Bip329ImportPreviewResponse,
-    Classification, GraphBuildOptions, GraphInputRequest, GraphInputResolution, ProvenanceGraph,
-    RefType, ReportExportRequest, ReportManifest, ReportPreviewRequest, ReportPreviewResponse,
-    ReportWarning, TransactionDetail, TxInput, TxOutput,
+    Classification, GraphBuildOptions, GraphInputCapabilities, GraphInputRequest,
+    GraphInputResolution, ProvenanceGraph, RefType, ReportExportRequest, ReportManifest,
+    ReportPreviewRequest, ReportPreviewResponse, ReportWarning, TransactionDetail, TxInput,
+    TxOutput,
 };
 use provenance_core::api::{
     apply_bip329_import as core_apply_bip329_import,
     build_graph_export_context_from_input as core_build_graph_export_context_from_input,
     export_bip329 as core_export_bip329, export_report as core_export_report,
+    get_graph_input_capabilities as core_get_graph_input_capabilities,
     preview_bip329_import as core_preview_bip329_import, preview_report as core_preview_report,
 };
 
@@ -352,6 +354,20 @@ async fn cmd_core_status(state: tauri::State<'_, AppState>) -> Result<CoreStatus
     tauri::async_runtime::spawn_blocking(move || {
         let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
         rpc.status().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn cmd_get_graph_input_capabilities(
+    state: tauri::State<'_, AppState>,
+) -> Result<GraphInputCapabilities, String> {
+    let cfg = get_rpc_config(&state)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let rpc = CoreRpc::new(&cfg).map_err(|e| e.to_string())?;
+        core_get_graph_input_capabilities(&rpc).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -803,6 +819,7 @@ fn main() {
             cmd_fetch_tx,
             cmd_build_graph,
             cmd_build_graph_from_input,
+            cmd_get_graph_input_capabilities,
             cmd_get_tx_detail,
             cmd_set_label,
             cmd_delete_label,

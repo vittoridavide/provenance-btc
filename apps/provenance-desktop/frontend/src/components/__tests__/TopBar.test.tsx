@@ -100,6 +100,40 @@ describe('TopBar', () => {
     expect(onSearchInput).toHaveBeenCalledWith(outpoint)
   })
 
+  it('uses txid/outpoint placeholder when address input is unsupported', () => {
+    renderTopBar({
+      searchInput: '',
+      addressInputEnabled: false,
+      addressUnavailableReason: 'RPC backend does not support scantxoutset',
+    })
+
+    expect(screen.getByPlaceholderText('txid / outpoint')).toBeInTheDocument()
+  })
+
+  it('still submits address input when address input is unsupported', async () => {
+    const { onSearchInput } = renderTopBar({
+      searchInput: '',
+      addressInputEnabled: false,
+    })
+    const user = userEvent.setup()
+    const address = 'bc1q8v7x0m4xfl6w6aw9f4f2z6qs2kg8y4mddt7h4x'
+
+    await user.type(screen.getByPlaceholderText('txid / outpoint'), `${address}{enter}`)
+    expect(onSearchInput).toHaveBeenCalledWith(address)
+  })
+
+  it('still submits txid when address input is unsupported', async () => {
+    const { onSearchInput } = renderTopBar({
+      searchInput: '',
+      addressInputEnabled: false,
+    })
+    const user = userEvent.setup()
+
+    await user.type(screen.getByPlaceholderText('txid / outpoint'), `${VALID_TXID}{enter}`)
+
+    expect(onSearchInput).toHaveBeenCalledWith(VALID_TXID)
+  })
+
   it('does not submit empty input', async () => {
     const { onSearchInput } = renderTopBar({ searchInput: '' })
     const user = userEvent.setup()
