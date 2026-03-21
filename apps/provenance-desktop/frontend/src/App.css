@@ -492,6 +492,15 @@
   flex: 1;
   max-width: 672px;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-bar__change-root-button {
+  height: 36px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 
@@ -499,6 +508,8 @@
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1;
+  min-width: 0;
 }
 
 .top-bar__search-icon {

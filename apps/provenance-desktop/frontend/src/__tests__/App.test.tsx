@@ -176,17 +176,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 vi.mock('../components/Sidebar', () => ({
-  default: (props: {
-    showChangeRootTxButton?: boolean
-    onChangeRootTx?: () => void
-  }) => (
-    <div data-testid="sidebar">
-      {props.showChangeRootTxButton ? (
-        <button type="button" onClick={props.onChangeRootTx}>
-          Change root tx
-        </button>
-      ) : null}
-    </div>
+  default: () => (
+    <div data-testid="sidebar" />
   ),
 }))
 
@@ -195,6 +186,8 @@ vi.mock('../components/TopBar', () => ({
     onOpenImportExport: () => void
     onOpenRpcSettings: () => void
     onSearchInput: (input: string) => void
+    showChangeRootTxButton?: boolean
+    onChangeRootTx?: () => void
   }) => (
     <div>
       <button type="button" onClick={props.onOpenImportExport}>
@@ -212,6 +205,11 @@ vi.mock('../components/TopBar', () => ({
       <button type="button" onClick={() => props.onSearchInput(NO_UTXO_ADDRESS)}>
         Search no-utxo address
       </button>
+      {props.showChangeRootTxButton ? (
+        <button type="button" onClick={props.onChangeRootTx}>
+          Change root tx
+        </button>
+      ) : null}
     </div>
   ),
 }))
@@ -411,7 +409,7 @@ describe('App input-driven flow', () => {
     expect(screen.getByTestId('resolved-root')).toHaveTextContent(TXID_B)
   })
 
-  it('reopens the root candidate picker from sidebar after selecting an address root', async () => {
+  it('reopens the root candidate picker from top bar after selecting an address root', async () => {
     const user = userEvent.setup()
     render(<App />)
     await connectRpc(user)

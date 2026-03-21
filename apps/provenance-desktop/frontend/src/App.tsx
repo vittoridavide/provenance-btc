@@ -501,6 +501,8 @@ function App() {
         addressInputEnabled={addressInputEnabled}
         addressUnavailableReason={graphInputCapabilities.address_unavailable_reason}
         isInputCapabilitiesLoading={isGraphInputCapabilitiesLoading}
+        showChangeRootTxButton={canChangeAddressRootTx}
+        onChangeRootTx={() => setIsRootCandidateModalOpen(true)}
         onOpenImportExport={() => {
           if (!isRpcConfigured) {
             setIsRpcModalOpen(true)
@@ -514,8 +516,6 @@ function App() {
         <Sidebar
           collapsed={sidebarCollapsed}
           selectedTxid={selectedTxid}
-          showChangeRootTxButton={canChangeAddressRootTx}
-          onChangeRootTx={() => setIsRootCandidateModalOpen(true)}
           onToggle={handleToggleSidebar}
         />
         <div className="main-area">

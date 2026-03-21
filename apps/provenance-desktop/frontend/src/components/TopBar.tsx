@@ -24,6 +24,8 @@ type TopBarProps = {
   addressInputEnabled?: boolean
   addressUnavailableReason?: string | null
   isInputCapabilitiesLoading?: boolean
+  showChangeRootTxButton?: boolean
+  onChangeRootTx?: () => void
 }
 
 function TopBar({
@@ -34,6 +36,8 @@ function TopBar({
   addressInputEnabled = true,
   addressUnavailableReason = null,
   isInputCapabilitiesLoading = false,
+  showChangeRootTxButton = false,
+  onChangeRootTx,
 }: TopBarProps) {
   void addressUnavailableReason
   void isInputCapabilitiesLoading
@@ -80,6 +84,15 @@ function TopBar({
             disabled={isGraphLoading}
           />
         </div>
+        {showChangeRootTxButton && onChangeRootTx ? (
+          <button
+            type="button"
+            className="top-bar__change-root-button control-button"
+            onClick={onChangeRootTx}
+          >
+            Change root tx
+          </button>
+        ) : null}
       </form>
       <div className="top-bar__actions">
         <button

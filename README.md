@@ -161,8 +161,8 @@ File selection happens in the frontend, while file reading and writing stay in t
 * [x] Recursive ancestry tracing
 * [x] Local label storage
 * [x] CSV export
+* [x] Address search
 * [ ] Multi-wallet session overlay
-* [ ] Address search
 
 ## License
 
