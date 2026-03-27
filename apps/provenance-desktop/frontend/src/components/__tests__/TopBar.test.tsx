@@ -31,14 +31,12 @@ type TopBarTestPropsOverrides = Partial<ComponentProps<typeof TopBar>>
 
 function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
   const onSearchInput = vi.fn()
-  const onOpenImportExport = vi.fn()
   const onOpenRpcSettings = vi.fn()
 
   const result = render(
     <TopBar
       searchInput={VALID_TXID}
       onSearchInput={onSearchInput}
-      onOpenImportExport={onOpenImportExport}
       onOpenRpcSettings={onOpenRpcSettings}
       {...overrides}
     />,
@@ -47,7 +45,6 @@ function renderTopBar(overrides: TopBarTestPropsOverrides = {}) {
   return {
     ...result,
     onSearchInput,
-    onOpenImportExport,
     onOpenRpcSettings,
   }
 }
@@ -61,14 +58,17 @@ afterEach(() => {
 })
 
 describe('TopBar', () => {
-  it('wires top-bar action buttons to explicit callbacks', async () => {
-    const { onOpenImportExport, onOpenRpcSettings } = renderTopBar()
+  it('does not render a standalone import/export action button', () => {
+    renderTopBar()
+
+    expect(screen.queryByRole('button', { name: 'Import / Export' })).not.toBeInTheDocument()
+  })
+  it('wires the RPC settings action button to its callback', async () => {
+    const { onOpenRpcSettings } = renderTopBar()
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('button', { name: 'Import / Export' }))
     await user.click(screen.getByRole('button', { name: 'RPC Settings' }))
 
-    expect(onOpenImportExport).toHaveBeenCalledTimes(1)
     expect(onOpenRpcSettings).toHaveBeenCalledTimes(1)
   })
 

@@ -31,19 +31,23 @@ rpcpassword=your_rpc_password
 
 If you connect to a public unauthenticated RPC endpoint, that server may log searched transactions and addresses.
 
-### Import / Export workflows
+### Data Management sidebar workflows
 
-The desktop UI routes report and BIP-329 actions through a dedicated `Import / Export` center:
+After you run a graph search, the right rail shows a contextual `Data Management` sidebar:
 
-- `Reports`
-  - preview `transactions`, `outputs`, or `exceptions` CSV output for the current graph
-  - show row counts, suggested filename, and warning summary before save
-  - save through the native Tauri dialog plugin
-- `BIP-329 Labels`
+- the sidebar is visible only after search
+- selecting a transaction card switches the right rail to `Transaction Details`
+- clearing transaction selection restores `Data Management`
+
+`Data Management` supports:
+
+- `Import Labels` (BIP-329 JSONL only)
   - choose a file with the native open dialog
-  - preview parsed counts, ambiguous supported-record warnings, and invalid lines
-  - apply imports only after explicit confirmation and conflict-policy selection
-  - export editable local labels plus preserved records as JSONL through the native save dialog
+  - apply immediately with a selected conflict policy
+- `Export Labels` (BIP-329 JSONL)
+  - save via native dialog
+- `Export CSV`
+  - save `transactions` or `outputs` reports for the current graph context
 
 File contents are read and written in `src-tauri/src/main.rs`; the frontend only selects paths and manages UI state.
 
@@ -68,12 +72,12 @@ npm run tauri:build
 ```
 ### Manual smoke checklist
 
-1. Open `Import / Export` from the top bar.
-2. In `Reports`, preview each report kind and confirm save stays disabled when preview returns zero rows.
-3. Save a report through the native dialog and confirm the success message shows the final path.
-4. In `BIP-329 Labels`, preview an import before applying it and verify ambiguous or invalid records are surfaced.
-5. Apply a label import and confirm graph and detail state refresh immediately.
-6. Export labels through the native dialog and confirm export works even without a loaded graph.
+1. Run a search and confirm `Data Management` appears in the right rail.
+2. Select any transaction card and confirm `Transaction Details` replaces `Data Management`.
+3. Clear selection and confirm `Data Management` is restored.
+4. In `Export CSV`, save both `transactions` and `outputs` reports through native dialogs.
+5. In `Import Labels`, import a BIP-329 file and confirm graph state refreshes.
+6. In `Export Labels`, export BIP-329 JSONL and confirm the success path is shown.
 
 ## Current status
 
@@ -82,4 +86,4 @@ The desktop app now includes:
 - transaction graph inspection and detail views
 - local label and classification editing
 - native-dialog CSV reporting for the current graph
-- staged BIP-329 import/export workflows for label portability
+- right-rail BIP-329 data management workflows (import/export labels + CSV exports)

@@ -31,13 +31,25 @@ function MockGraphCanvas({
   onRegisterRefresh,
   onRegisterViewActions,
   onGraphDataChange,
+  onGraphSummaryChange,
   onResolutionChange,
+  onSelectTxid,
 }: {
   input: string
   selectedRootTxid?: string | null
   onRegisterRefresh: (refresh: (() => Promise<void>) | null) => void
   onRegisterViewActions: (actions: null) => void
   onGraphDataChange: (graph: { nodes: unknown[]; edges: unknown[]; summary: unknown } | null) => void
+  onGraphSummaryChange: (summary: {
+    total_nodes: number
+    unclassified_nodes: number
+    missing_parent_edges: number
+    confirmed_nodes: number
+    mempool_nodes: number
+    total_outputs: number
+    labeled_transactions: number
+    labeled_outputs: number
+  } | null) => void
   onResolutionChange: (resolution: {
     normalized_input: string
     input_kind: 'txid' | 'address'
@@ -45,6 +57,7 @@ function MockGraphCanvas({
     selected_root_txid: string | null
     requires_selection: boolean
   } | null) => void
+  onSelectTxid: (txid: string | null) => void
 }) {
   useEffect(() => {
     onRegisterRefresh(async () => {
@@ -61,12 +74,14 @@ function MockGraphCanvas({
     if (!normalizedInput) {
       onResolutionChange(null)
       onGraphDataChange(null)
+      onGraphSummaryChange(null)
       return
     }
 
     if (normalizedInput === NO_UTXO_ADDRESS) {
       onResolutionChange(null)
       onGraphDataChange(null)
+      onGraphSummaryChange(null)
       return
     }
 
@@ -82,6 +97,7 @@ function MockGraphCanvas({
         requires_selection: true,
       })
       onGraphDataChange(null)
+      onGraphSummaryChange(null)
       return
     }
 
@@ -98,10 +114,26 @@ function MockGraphCanvas({
       edges: [],
       summary: {},
     })
-  }, [input, onGraphDataChange, onResolutionChange, selectedRootTxid])
+    onGraphSummaryChange({
+      total_nodes: 1,
+      unclassified_nodes: 0,
+      missing_parent_edges: 0,
+      confirmed_nodes: 1,
+      mempool_nodes: 0,
+      total_outputs: 2,
+      labeled_transactions: 1,
+      labeled_outputs: 1,
+    })
+  }, [input, onGraphDataChange, onGraphSummaryChange, onResolutionChange, selectedRootTxid])
 
   return (
     <div data-testid="graph-canvas">
+      <button type="button" onClick={() => onSelectTxid('selected-txid')}>
+        Select tx card
+      </button>
+      <button type="button" onClick={() => onSelectTxid(null)}>
+        Clear tx selection
+      </button>
       {input.trim() === NO_UTXO_ADDRESS ? 'no unspent outputs found for address' : null}
     </div>
   )
@@ -109,8 +141,10 @@ function MockGraphCanvas({
 
 function MockDetailPanel({
   onRegisterRefresh,
+  onDeselect,
 }: {
   onRegisterRefresh: (refresh: (() => Promise<void>) | null) => void
+  onDeselect?: () => void
 }) {
   useEffect(() => {
     onRegisterRefresh(async () => {
@@ -122,27 +156,25 @@ function MockDetailPanel({
     }
   }, [onRegisterRefresh])
 
-  return <div data-testid="detail-panel" />
+  return (
+    <div data-testid="detail-panel">
+      <button type="button" onClick={onDeselect}>
+        Deselect tx card
+      </button>
+    </div>
+  )
 }
 
-function MockImportExportCenter(props: {
-  isOpen: boolean
+function MockDataManagementSidebar(props: {
   rootTxid: string
-  onPreviewReport: (request: ReturnType<typeof reportRequestFor>) => Promise<unknown>
   onExportReport: (request: ReturnType<typeof reportRequestFor>, outputPath: string) => Promise<unknown>
-  onPreviewLabelImport: (inputPath: string) => Promise<unknown>
   onApplyLabelImport: (inputPath: string, policy: 'prefer_local') => Promise<unknown>
-  onPreviewLabelExport: () => Promise<unknown>
   onExportLabels: (outputPath: string) => Promise<unknown>
 }) {
-  if (!props.isOpen) return null
 
   return (
-    <div>
+    <div data-testid="data-management-sidebar">
       <div data-testid="resolved-root">{props.rootTxid}</div>
-      <button type="button" onClick={() => void props.onPreviewReport(reportRequestFor(props.rootTxid))}>
-        Preview report
-      </button>
       <button
         type="button"
         onClick={() => void props.onExportReport(reportRequestFor(props.rootTxid), '/tmp/report.csv')}
@@ -151,18 +183,9 @@ function MockImportExportCenter(props: {
       </button>
       <button
         type="button"
-        onClick={() => void props.onPreviewLabelImport('/tmp/import.jsonl')}
-      >
-        Preview labels import
-      </button>
-      <button
-        type="button"
         onClick={() => void props.onApplyLabelImport('/tmp/import.jsonl', 'prefer_local')}
       >
         Apply labels import
-      </button>
-      <button type="button" onClick={() => void props.onPreviewLabelExport()}>
-        Preview labels export
       </button>
       <button type="button" onClick={() => void props.onExportLabels('/tmp/export.jsonl')}>
         Export labels
@@ -183,16 +206,12 @@ vi.mock('../components/Sidebar', () => ({
 
 vi.mock('../components/TopBar', () => ({
   default: (props: {
-    onOpenImportExport: () => void
     onOpenRpcSettings: () => void
     onSearchInput: (input: string) => void
     showChangeRootTxButton?: boolean
     onChangeRootTx?: () => void
   }) => (
     <div>
-      <button type="button" onClick={props.onOpenImportExport}>
-        Open Import Export
-      </button>
       <button type="button" onClick={props.onOpenRpcSettings}>
         RPC Settings
       </button>
@@ -243,8 +262,8 @@ vi.mock('../components/DetailPanel', () => ({
   default: MockDetailPanel,
 }))
 
-vi.mock('../components/import-export/ImportExportCenter', () => ({
-  default: MockImportExportCenter,
+vi.mock('../components/DataManagementSidebar', () => ({
+  default: MockDataManagementSidebar,
 }))
 
 import App from '../App'
@@ -287,18 +306,6 @@ beforeEach(() => {
           supported_input_kinds: ['txid', 'outpoint', 'address'],
           address_unavailable_reason: null,
         })
-      case 'cmd_preview_report':
-        return Promise.resolve({
-          manifest: {
-            report_kind: 'transactions',
-            report_scope: 'current_graph',
-            schema_version: 1,
-            row_count: 2,
-            columns: ['txid'],
-            suggested_filename: 'transactions.csv',
-          },
-          warnings: [],
-        })
       case 'cmd_export_report':
         return Promise.resolve({
           output_path: '/tmp/report.csv',
@@ -312,16 +319,6 @@ beforeEach(() => {
           },
           warnings: [],
         })
-      case 'cmd_preview_labels_import':
-        return Promise.resolve({
-          total_lines: 1,
-          apply_supported: 1,
-          preserve_only: 0,
-          ambiguous_supported: 0,
-          invalid: 0,
-          ignored_unsupported: 0,
-          lines: [],
-        })
       case 'cmd_apply_labels_import':
         return Promise.resolve({
           total_lines: 1,
@@ -331,14 +328,6 @@ beforeEach(() => {
           skipped_unsupported_type: 0,
           skipped_invalid: 0,
           errors: [],
-        })
-      case 'cmd_preview_labels_export':
-        return Promise.resolve({
-          suggested_filename: 'provenance-bip329-labels.jsonl',
-          record_count: 1,
-          supported_label_count: 1,
-          preserved_record_count: 0,
-          jsonl_contents: '',
         })
       case 'cmd_export_labels':
         return Promise.resolve('/tmp/export.jsonl')
@@ -367,18 +356,21 @@ describe('App input-driven flow', () => {
     expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument()
   })
 
-  it('routes txid search directly to a resolved root txid for report preview', async () => {
+  it('routes txid search directly to a resolved root txid for report export', async () => {
     const user = userEvent.setup()
     render(<App />)
     await connectRpc(user)
 
     await user.click(screen.getByRole('button', { name: 'Search txid' }))
-    await user.click(screen.getByRole('button', { name: 'Open Import Export' }))
-    await user.click(screen.getByRole('button', { name: 'Preview report' }))
+    await screen.findByTestId('data-management-sidebar')
+    await user.click(screen.getByRole('button', { name: 'Export report' }))
 
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith('cmd_preview_report', {
-        args: reportRequestFor(TXID_A),
+      expect(invoke).toHaveBeenCalledWith('cmd_export_report', {
+        args: {
+          request: reportRequestFor(TXID_A),
+          outputPath: '/tmp/report.csv',
+        },
       }),
     )
     expect(screen.getByTestId('resolved-root')).toHaveTextContent(TXID_A)
@@ -397,13 +389,15 @@ describe('App input-driven flow', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('root-candidate-picker')).not.toBeInTheDocument(),
     )
-
-    await user.click(screen.getByRole('button', { name: 'Open Import Export' }))
-    await user.click(screen.getByRole('button', { name: 'Preview report' }))
+    await screen.findByTestId('data-management-sidebar')
+    await user.click(screen.getByRole('button', { name: 'Export report' }))
 
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith('cmd_preview_report', {
-        args: reportRequestFor(TXID_B),
+      expect(invoke).toHaveBeenCalledWith('cmd_export_report', {
+        args: {
+          request: reportRequestFor(TXID_B),
+          outputPath: '/tmp/report.csv',
+        },
       }),
     )
     expect(screen.getByTestId('resolved-root')).toHaveTextContent(TXID_B)
@@ -440,8 +434,8 @@ describe('App input-driven flow', () => {
     const user = userEvent.setup()
     render(<App />)
     await connectRpc(user)
-
-    await user.click(screen.getByRole('button', { name: 'Open Import Export' }))
+    await user.click(screen.getByRole('button', { name: 'Search txid' }))
+    await screen.findByTestId('data-management-sidebar')
     await user.click(screen.getByRole('button', { name: 'Apply labels import' }))
 
     await waitFor(() =>
@@ -453,6 +447,24 @@ describe('App input-driven flow', () => {
       }),
     )
     await waitFor(() => expect(graphRefreshSpy).toHaveBeenCalledTimes(1))
-    expect(detailRefreshSpy).toHaveBeenCalledTimes(1)
+    expect(detailRefreshSpy).toHaveBeenCalledTimes(0)
+  })
+
+  it('shows data management after search, hides it on tx selection, and restores it on deselect', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await connectRpc(user)
+
+    await user.click(screen.getByRole('button', { name: 'Search txid' }))
+    expect(await screen.findByTestId('data-management-sidebar')).toBeInTheDocument()
+    expect(screen.queryByTestId('detail-panel')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Select tx card' }))
+    expect(await screen.findByTestId('detail-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('data-management-sidebar')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Deselect tx card' }))
+    expect(await screen.findByTestId('data-management-sidebar')).toBeInTheDocument()
+    expect(screen.queryByTestId('detail-panel')).not.toBeInTheDocument()
   })
 })

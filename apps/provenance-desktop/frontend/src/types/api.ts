@@ -48,6 +48,9 @@ export interface GraphSummary {
   missing_parent_edges: number
   confirmed_nodes: number
   mempool_nodes: number
+  total_outputs: number
+  labeled_transactions: number
+  labeled_outputs: number
 }
 
 export interface ProvenanceSetup {
