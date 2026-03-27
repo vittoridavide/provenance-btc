@@ -2,25 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import './App.css'
 import DetailPanel from './components/DetailPanel'
-import GraphCanvas, { type GraphCanvasTopBarActions } from './components/GraphCanvas'
-import ImportExportCenter from './components/import-export/ImportExportCenter'
+import DataManagementSidebar from './components/DataManagementSidebar'
+import GraphCanvas, {
+  type GraphCanvasTopBarActions,
+  type GraphClassificationUpdate,
+} from './components/GraphCanvas'
 import RootCandidatePicker from './components/RootCandidatePicker'
 import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import { useGraphInputCapabilities } from './hooks/useGraphInputCapabilities'
 import type {
-  Bip329ExportResult,
   Bip329ImportApplyResult,
   Bip329ImportConflictPolicy,
-  Bip329ImportPreviewResponse,
   GraphInputCandidateRoot,
   GraphInputResolution,
+  GraphSummary,
   ProvenanceGraph,
   ReportExportRequest,
   ReportFileExportResult,
-  ReportPreviewRequest,
-  ReportPreviewResponse,
 } from './types/api'
 const DEFAULT_SEARCH_INPUT = import.meta.env.VITE_PROVENANCE_GRAPH_ROOT_TXID ?? ''
 const COMPACT_LAYOUT_MAX_WIDTH = 1400
@@ -100,31 +100,6 @@ function toErrorMessage(error: unknown): string {
   }
 }
 
-function formatFileTimestamp(date = new Date()): string {
-  const year = date.getFullYear()
-  const month = `${date.getMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getDate()}`.padStart(2, '0')
-  const hours = `${date.getHours()}`.padStart(2, '0')
-  const minutes = `${date.getMinutes()}`.padStart(2, '0')
-  const seconds = `${date.getSeconds()}`.padStart(2, '0')
-  return `${year}${month}${day}-${hours}${minutes}${seconds}`
-}
-
-function downloadTextFile(fileName: string, contents: string, mimeType: string): void {
-  if (typeof document === 'undefined') {
-    return
-  }
-
-  const fileBlob = new Blob([contents], { type: mimeType })
-  const objectUrl = URL.createObjectURL(fileBlob)
-  const downloadLink = document.createElement('a')
-  downloadLink.href = objectUrl
-  downloadLink.download = fileName
-  document.body.appendChild(downloadLink)
-  downloadLink.click()
-  document.body.removeChild(downloadLink)
-  URL.revokeObjectURL(objectUrl)
-}
 
 function getViewportWidth(): number {
   if (typeof window === 'undefined') {
@@ -188,8 +163,11 @@ function App() {
   const [graphReloadKey, setGraphReloadKey] = useState(0)
   const [graphInputCapabilitiesReloadKey, setGraphInputCapabilitiesReloadKey] = useState(0)
   const [selectedTxid, setSelectedTxid] = useState<string | null>(null)
+  const [hasSearched, setHasSearched] = useState(false)
   const [graphData, setGraphData] = useState<ProvenanceGraph | null>(null)
-  const [isImportExportOpen, setIsImportExportOpen] = useState(false)
+  const [graphSummary, setGraphSummary] = useState<GraphSummary | null>(null)
+  const [graphClassificationUpdate, setGraphClassificationUpdate] =
+    useState<GraphClassificationUpdate | null>(null)
   const graphViewActionsRef = useRef<GraphCanvasTopBarActions | null>(null)
   const graphRefreshRef = useRef<(() => Promise<void>) | null>(null)
   const detailRefreshRef = useRef<(() => Promise<void>) | null>(null)
@@ -256,6 +234,7 @@ function App() {
       setIsRpcModalOpen(true)
       return
     }
+    setHasSearched(true)
     setSubmittedSearchInput(nextInput)
     setSelectedRootTxid(null)
     setIsRootCandidateModalOpen(false)
@@ -265,6 +244,8 @@ function App() {
     setActiveRootTxid(null)
     setSelectedTxid(null)
     setGraphData(null)
+    setGraphSummary(null)
+    setGraphClassificationUpdate(null)
     setGraphReloadKey((current) => current + 1)
   }, [isRpcConfigured])
   const handleResolutionChange = useCallback((nextResolution: GraphInputResolution | null) => {
@@ -296,6 +277,7 @@ function App() {
     setActiveRootTxid(null)
     setSelectedTxid(null)
     setGraphData(null)
+    setGraphClassificationUpdate(null)
     setGraphReloadKey((current) => current + 1)
   }, [])
   const handleSelectTxid = useCallback((nextSelectedTxid: string | null) => {
@@ -306,21 +288,29 @@ function App() {
     }
   }, [])
 
+  const showTransactionDetails = !!selectedTxid
+  const showDataManagement = hasSearched && !showTransactionDetails
+
   const workspaceClassName = useMemo(() => {
     const classNames = ['workspace-row']
 
     if (workspacePreset.compact) {
       classNames.push('workspace-row--compact')
     }
-
-    if (!selectedTxid) {
-      classNames.push('workspace-row--no-detail')
-    } else if (detailCollapsed) {
+    if (showTransactionDetails || showDataManagement) {
+      classNames.push('workspace-row--right-rail')
+    }
+  if ((showTransactionDetails || showDataManagement) && detailCollapsed) {
       classNames.push('workspace-row--detail-collapsed')
     }
 
     return classNames.join(' ')
-  }, [detailCollapsed, selectedTxid, workspacePreset.compact])
+  }, [
+    detailCollapsed,
+    showDataManagement,
+    showTransactionDetails,
+    workspacePreset.compact,
+  ])
 
   const handleToggleSidebar = useCallback(() => {
     setSidebarCollapsed((current) => !current)
@@ -330,6 +320,12 @@ function App() {
   }, [])
   const handleGraphDataChange = useCallback((nextGraphData: ProvenanceGraph | null) => {
     setGraphData(nextGraphData)
+  }, [])
+  const handleGraphClassificationUpdate = useCallback((update: GraphClassificationUpdate) => {
+    setGraphClassificationUpdate({ ...update })
+  }, [])
+  const handleGraphSummaryChange = useCallback((nextGraphSummary: GraphSummary | null) => {
+    setGraphSummary(nextGraphSummary)
   }, [])
   const handleRegisterViewActions = useCallback((actions: GraphCanvasTopBarActions | null) => {
     graphViewActionsRef.current = actions
@@ -385,9 +381,11 @@ function App() {
       })
 
       setIsRpcConfigured(true)
-      setIsImportExportOpen(false)
       setSelectedTxid(null)
+      setHasSearched(false)
       setGraphData(null)
+      setGraphSummary(null)
+      setGraphClassificationUpdate(null)
       setIsRootCandidateModalOpen(false)
       setIsAddressResolution(false)
       setAddressRootCandidates([])
@@ -415,25 +413,6 @@ function App() {
     rpcUrl,
     rpcUsername,
   ])
-  const handleExportGraphJson = useCallback(async () => {
-    if (!graphData || graphData.nodes.length === 0) {
-      return
-    }
-
-    try {
-      const graphJson = await invoke<string>('cmd_export_graph_json', {
-        graph: graphData,
-      })
-      const exportTxid = activeRootTxid?.trim() || 'graph'
-      const fileName = `provenance-graph-${exportTxid}-${formatFileTimestamp()}.json`
-      downloadTextFile(fileName, graphJson, 'application/json')
-    } catch {
-      // Intentionally ignore export failures to keep graph workflow non-blocking.
-    }
-  }, [activeRootTxid, graphData])
-  const handlePreviewLabelExport = useCallback(async () => {
-    return await invoke<Bip329ExportResult>('cmd_preview_labels_export')
-  }, [])
   const handleExportLabels = useCallback(async (outputPath: string) => {
     const savedPath = await invoke<string>('cmd_export_labels', {
       args: {
@@ -441,11 +420,6 @@ function App() {
       },
     })
     return savedPath
-  }, [])
-  const handlePreviewLabelImport = useCallback(async (inputPath: string) => {
-    return await invoke<Bip329ImportPreviewResponse>('cmd_preview_labels_import', {
-      args: { inputPath },
-    })
   }, [])
   const handleApplyLabelImport = useCallback(
     async (inputPath: string, policy: Bip329ImportConflictPolicy) => {
@@ -457,11 +431,6 @@ function App() {
     },
     [handleWorkspaceRefresh],
   )
-  const handlePreviewReport = useCallback(async (request: ReportPreviewRequest) => {
-    return await invoke<ReportPreviewResponse>('cmd_preview_report', {
-      args: request,
-    })
-  }, [])
   const handleExportReport = useCallback(
     async (request: ReportExportRequest, outputPath: string) => {
       return await invoke<ReportFileExportResult>('cmd_export_report', {
@@ -503,13 +472,6 @@ function App() {
         isInputCapabilitiesLoading={isGraphInputCapabilitiesLoading}
         showChangeRootTxButton={canChangeAddressRootTx}
         onChangeRootTx={() => setIsRootCandidateModalOpen(true)}
-        onOpenImportExport={() => {
-          if (!isRpcConfigured) {
-            setIsRpcModalOpen(true)
-            return
-          }
-          setIsImportExportOpen(true)
-        }}
         onOpenRpcSettings={() => setIsRpcModalOpen(true)}
       />
       <div className="content-row">
@@ -538,39 +500,42 @@ function App() {
                     addressInputEnabled={addressInputEnabled}
                     selectedRootTxid={selectedRootTxid}
                     reloadKey={graphReloadKey}
+                    classificationUpdate={graphClassificationUpdate}
                     selectedTxid={selectedTxid}
                     onSelectTxid={handleSelectTxid}
+                    onGraphSummaryChange={handleGraphSummaryChange}
                     onResolutionChange={handleResolutionChange}
                     onGraphDataChange={handleGraphDataChange}
                     onRegisterViewActions={handleRegisterViewActions}
                     onRegisterRefresh={handleRegisterGraphRefresh}
                   />
                 </div>
-                <DetailPanel
-                  selectedTxid={selectedTxid}
-                  collapsed={detailCollapsed}
-                  onGraphRefresh={handleGraphRefresh}
-                  onRegisterRefresh={handleRegisterDetailRefresh}
-                  onDeselect={() => setSelectedTxid(null)}
-                  onToggle={handleToggleDetail}
-                />
+                {showTransactionDetails ? (
+                  <DetailPanel
+                    selectedTxid={selectedTxid}
+                    collapsed={detailCollapsed}
+                    onGraphClassificationUpdate={handleGraphClassificationUpdate}
+                    onRegisterRefresh={handleRegisterDetailRefresh}
+                    onDeselect={() => setSelectedTxid(null)}
+                    onToggle={handleToggleDetail}
+                  />
+                ) : showDataManagement ? (
+                  <DataManagementSidebar
+                    rootTxid={activeRootTxid ?? ''}
+                    graphSummary={graphSummary}
+                    graphEdgeCount={graphData?.edges.length ?? 0}
+                    collapsed={detailCollapsed}
+                    onToggle={handleToggleDetail}
+                    onExportReport={handleExportReport}
+                    onApplyLabelImport={handleApplyLabelImport}
+                    onExportLabels={handleExportLabels}
+                  />
+                ) : null}
               </div>
             ) : null}
           </div>
         </div>
       </div>
-      <ImportExportCenter
-        isOpen={isImportExportOpen && isRpcConfigured}
-        onClose={() => setIsImportExportOpen(false)}
-        rootTxid={activeRootTxid ?? ''}
-        onExportGraphJson={handleExportGraphJson}
-        onPreviewReport={handlePreviewReport}
-        onExportReport={handleExportReport}
-        onPreviewLabelImport={handlePreviewLabelImport}
-        onApplyLabelImport={handleApplyLabelImport}
-        onPreviewLabelExport={handlePreviewLabelExport}
-        onExportLabels={handleExportLabels}
-      />
       <RpcConnectionModal
         isOpen={isRpcModalOpen}
         url={rpcUrl}

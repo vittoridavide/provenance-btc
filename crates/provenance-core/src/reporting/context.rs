@@ -402,6 +402,12 @@ pub fn build_graph_export_context<P: TxViewProvider>(
             .iter()
             .filter(|node| matches!(node.status, TxStatus::Mempool))
             .count() as u32,
+        total_outputs: output_rows.len() as u32,
+        labeled_transactions: tx_nodes_vec
+            .iter()
+            .filter(|node| node.label.is_some())
+            .count() as u32,
+        labeled_outputs: output_rows.iter().filter(|row| row.label.is_some()).count() as u32,
     };
 
     Ok(GraphExportContext {
@@ -688,6 +694,9 @@ mod tests {
         assert_eq!(graph.summary.mempool_nodes, 1);
         assert_eq!(graph.summary.unclassified_nodes, 2);
         assert_eq!(graph.summary.missing_parent_edges, 1);
+        assert_eq!(graph.summary.total_outputs, 3);
+        assert_eq!(graph.summary.labeled_transactions, 1);
+        assert_eq!(graph.summary.labeled_outputs, 1);
     }
 
     fn root_tx_view() -> TxView {

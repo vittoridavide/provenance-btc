@@ -19,7 +19,6 @@ function SearchIcon() {
 type TopBarProps = {
   searchInput: string
   onSearchInput: (input: string) => void
-  onOpenImportExport: () => void
   onOpenRpcSettings: () => void
   addressInputEnabled?: boolean
   addressUnavailableReason?: string | null
@@ -31,7 +30,6 @@ type TopBarProps = {
 function TopBar({
   searchInput: submittedInput,
   onSearchInput,
-  onOpenImportExport,
   onOpenRpcSettings,
   addressInputEnabled = true,
   addressUnavailableReason = null,
@@ -95,13 +93,6 @@ function TopBar({
         ) : null}
       </form>
       <div className="top-bar__actions">
-        <button
-          type="button"
-          className="top-bar__button control-button"
-          onClick={onOpenImportExport}
-        >
-          Import / Export
-        </button>
         <button
           type="button"
           className="top-bar__button control-button"

@@ -130,6 +130,9 @@ pub struct GraphSummary {
     pub missing_parent_edges: u32,
     pub confirmed_nodes: u32,
     pub mempool_nodes: u32,
+    pub total_outputs: u32,
+    pub labeled_transactions: u32,
+    pub labeled_outputs: u32,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
