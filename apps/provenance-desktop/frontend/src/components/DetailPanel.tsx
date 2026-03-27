@@ -13,12 +13,24 @@ import {
   getGraphControlsSnapshot,
   subscribeGraphControls,
 } from '../state/graphControls'
-import type { Classification, RefType, TransactionDetail, TxOutput } from '../types/api'
+import type {
+  Classification,
+  ClassificationState,
+  RefType,
+  TransactionDetail,
+  TxOutput,
+} from '../types/api'
 
 type DetailPanelProps = {
   selectedTxid: string | null
   collapsed?: boolean
-  onGraphRefresh?: () => Promise<void>
+  onGraphClassificationUpdate?: (update: {
+    txid: string
+    classificationCategory: string | null
+    classificationState: ClassificationState
+    labeledOutputsDelta?: number
+    labeledTransactionsDelta?: number
+  }) => void
   onRegisterRefresh?: (refresh: (() => Promise<void>) | null) => void
   onDeselect?: () => void
   onToggle?: () => void
@@ -288,6 +300,15 @@ function createOutputDraftMap(detail: TransactionDetail): Record<number, OutputD
   return Object.fromEntries(entries)
 }
 
+function resolveClassificationState(
+  classificationCategory: string | null,
+  hasOutputClassification: boolean,
+): ClassificationState {
+  const normalizedCategory = (classificationCategory ?? '').trim()
+  if (!normalizedCategory) return 'None'
+  return hasOutputClassification ? 'Complete' : 'TxOnly'
+}
+
 function CollapseDetailIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -305,7 +326,7 @@ function CollapseDetailIcon() {
 function DetailPanel({
   selectedTxid,
   collapsed = false,
-  onGraphRefresh,
+  onGraphClassificationUpdate,
   onRegisterRefresh,
   onDeselect,
   onToggle,
@@ -483,10 +504,7 @@ function DetailPanel({
 
   const refreshAfterMutation = useCallback(async () => {
     await reload({ txid: activeTxidRef.current, throwOnError: true })
-    if (onGraphRefresh) {
-      await onGraphRefresh()
-    }
-  }, [onGraphRefresh, reload])
+  }, [reload])
 
   const syncPrimaryClassificationBadge = useCallback(
     async (nextCategory: string) => {
@@ -519,9 +537,16 @@ function DetailPanel({
         })
 
         if (requestId !== primaryClassificationSyncRequestRef.current) return
-        if (onGraphRefresh) {
-          await onGraphRefresh()
-        }
+        onGraphClassificationUpdate?.({
+          txid: loadedDetail.txid,
+          classificationCategory: normalizedCategory,
+          classificationState: resolveClassificationState(
+            normalizedCategory,
+            loadedDetail.outputs.some(
+              (output) => (output.classification?.category?.trim() ?? '').length > 0,
+            ),
+          ),
+        })
       } catch (syncError) {
         if (requestId !== primaryClassificationSyncRequestRef.current) return
         setFormError(`Failed to update node badge: ${toErrorMessage(syncError)}`)
@@ -538,7 +563,7 @@ function DetailPanel({
       invoiceReferenceId,
       loadedDetail,
       notes,
-      onGraphRefresh,
+      onGraphClassificationUpdate,
     ],
   )
 
@@ -647,6 +672,29 @@ function DetailPanel({
       }
 
       await Promise.all(outputMutations)
+      let labeledOutputsDelta = 0
+      for (const output of loadedDetail.outputs) {
+        const existingNotes = output.label?.trim() ?? ''
+        const draft = outputDrafts[output.vout] ?? initialOutputDraft(output)
+        const nextNotes = draft.notes.trim()
+        if (existingNotes.length === 0 && nextNotes.length > 0) {
+          labeledOutputsDelta += 1
+        } else if (existingNotes.length > 0 && nextNotes.length === 0) {
+          labeledOutputsDelta -= 1
+        }
+      }
+      onGraphClassificationUpdate?.({
+        txid: loadedDetail.txid,
+        classificationCategory: category,
+        classificationState: resolveClassificationState(
+          category,
+          loadedDetail.outputs.some((output) => {
+            const draft = outputDrafts[output.vout] ?? initialOutputDraft(output)
+            return draft.classification.trim().length > 0
+          }),
+        ),
+        labeledOutputsDelta,
+      })
       await refreshAfterMutation()
       setToast({
         tone: 'success',
@@ -674,6 +722,7 @@ function DetailPanel({
     isSyncingPrimaryClassification,
     loadedDetail,
     notes,
+    onGraphClassificationUpdate,
     outputDrafts,
     refreshAfterMutation,
   ])
@@ -758,6 +807,20 @@ function DetailPanel({
         ),
       )
       setClassificationMissing(false)
+      let labeledOutputsDelta = 0
+      for (const output of loadedDetail.outputs) {
+        if ((output.label ?? '').trim().length > 0) {
+          labeledOutputsDelta -= 1
+        }
+      }
+      const labeledTransactionsDelta = (loadedDetail.label ?? '').trim().length > 0 ? -1 : 0
+      onGraphClassificationUpdate?.({
+        txid: loadedDetail.txid,
+        classificationCategory: null,
+        classificationState: 'None',
+        labeledOutputsDelta,
+        labeledTransactionsDelta,
+      })
       await refreshAfterMutation()
       setToast({
         tone: 'success',
@@ -778,6 +841,7 @@ function DetailPanel({
     isSaving,
     isSyncingPrimaryClassification,
     loadedDetail,
+    onGraphClassificationUpdate,
     refreshAfterMutation,
   ])
 

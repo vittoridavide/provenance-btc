@@ -3,7 +3,10 @@ import { invoke } from '@tauri-apps/api/core'
 import './App.css'
 import DetailPanel from './components/DetailPanel'
 import DataManagementSidebar from './components/DataManagementSidebar'
-import GraphCanvas, { type GraphCanvasTopBarActions } from './components/GraphCanvas'
+import GraphCanvas, {
+  type GraphCanvasTopBarActions,
+  type GraphClassificationUpdate,
+} from './components/GraphCanvas'
 import RootCandidatePicker from './components/RootCandidatePicker'
 import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
@@ -163,6 +166,8 @@ function App() {
   const [hasSearched, setHasSearched] = useState(false)
   const [graphData, setGraphData] = useState<ProvenanceGraph | null>(null)
   const [graphSummary, setGraphSummary] = useState<GraphSummary | null>(null)
+  const [graphClassificationUpdate, setGraphClassificationUpdate] =
+    useState<GraphClassificationUpdate | null>(null)
   const graphViewActionsRef = useRef<GraphCanvasTopBarActions | null>(null)
   const graphRefreshRef = useRef<(() => Promise<void>) | null>(null)
   const detailRefreshRef = useRef<(() => Promise<void>) | null>(null)
@@ -240,6 +245,7 @@ function App() {
     setSelectedTxid(null)
     setGraphData(null)
     setGraphSummary(null)
+    setGraphClassificationUpdate(null)
     setGraphReloadKey((current) => current + 1)
   }, [isRpcConfigured])
   const handleResolutionChange = useCallback((nextResolution: GraphInputResolution | null) => {
@@ -271,6 +277,7 @@ function App() {
     setActiveRootTxid(null)
     setSelectedTxid(null)
     setGraphData(null)
+    setGraphClassificationUpdate(null)
     setGraphReloadKey((current) => current + 1)
   }, [])
   const handleSelectTxid = useCallback((nextSelectedTxid: string | null) => {
@@ -313,6 +320,9 @@ function App() {
   }, [])
   const handleGraphDataChange = useCallback((nextGraphData: ProvenanceGraph | null) => {
     setGraphData(nextGraphData)
+  }, [])
+  const handleGraphClassificationUpdate = useCallback((update: GraphClassificationUpdate) => {
+    setGraphClassificationUpdate({ ...update })
   }, [])
   const handleGraphSummaryChange = useCallback((nextGraphSummary: GraphSummary | null) => {
     setGraphSummary(nextGraphSummary)
@@ -375,6 +385,7 @@ function App() {
       setHasSearched(false)
       setGraphData(null)
       setGraphSummary(null)
+      setGraphClassificationUpdate(null)
       setIsRootCandidateModalOpen(false)
       setIsAddressResolution(false)
       setAddressRootCandidates([])
@@ -489,6 +500,7 @@ function App() {
                     addressInputEnabled={addressInputEnabled}
                     selectedRootTxid={selectedRootTxid}
                     reloadKey={graphReloadKey}
+                    classificationUpdate={graphClassificationUpdate}
                     selectedTxid={selectedTxid}
                     onSelectTxid={handleSelectTxid}
                     onGraphSummaryChange={handleGraphSummaryChange}
@@ -502,7 +514,7 @@ function App() {
                   <DetailPanel
                     selectedTxid={selectedTxid}
                     collapsed={detailCollapsed}
-                    onGraphRefresh={handleGraphRefresh}
+                    onGraphClassificationUpdate={handleGraphClassificationUpdate}
                     onRegisterRefresh={handleRegisterDetailRefresh}
                     onDeselect={() => setSelectedTxid(null)}
                     onToggle={handleToggleDetail}

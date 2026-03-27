@@ -22,7 +22,12 @@ import {
   type GraphLayoutMode,
   type TransactionVisibilityFilter,
 } from '../state/graphControls'
-import type { GraphInputResolution, GraphSummary, ProvenanceGraph } from '../types/api'
+import type {
+  ClassificationState,
+  GraphInputResolution,
+  GraphSummary,
+  ProvenanceGraph,
+} from '../types/api'
 import { categoryColorHexByKey, resolveCategoryNodeStyle } from '../utils/categoryPalette'
 import {
   type GraphFlowEdge,
@@ -52,6 +57,7 @@ type GraphCanvasProps = {
   addressInputEnabled?: boolean
   selectedRootTxid?: string | null
   reloadKey: number
+  classificationUpdate?: GraphClassificationUpdate | null
   selectedTxid: string | null
   onSelectTxid: (txid: string | null) => void
   onGraphSummaryChange?: (summary: GraphSummary | null) => void
@@ -64,6 +70,14 @@ type GraphCanvasProps = {
 export type GraphCanvasTopBarActions = {
   fitView: () => void
   resetLayout: () => void
+}
+
+export type GraphClassificationUpdate = {
+  txid: string
+  classificationCategory: string | null
+  classificationState: ClassificationState
+  labeledOutputsDelta?: number
+  labeledTransactionsDelta?: number
 }
 
 type GraphViewportProps = {
@@ -523,6 +537,7 @@ function GraphCanvas({
   addressInputEnabled = true,
   selectedRootTxid = null,
   reloadKey,
+  classificationUpdate = null,
   selectedTxid,
   onSelectTxid,
   onGraphSummaryChange,
@@ -559,12 +574,72 @@ function GraphCanvas({
     }
   }, [depth])
 
-  const { graph, resolution, loading, error, reload } = useGraph({
+  const { graph, resolution, loading, error, reload, updateGraph } = useGraph({
     input,
     depth: debouncedDepth,
     selectedRootTxid,
     reloadKey,
   })
+
+  useEffect(() => {
+    if (!classificationUpdate) return
+
+    updateGraph((currentGraph) => {
+      if (!currentGraph) return currentGraph
+
+      const normalizedTxid = classificationUpdate.txid.trim()
+      if (!normalizedTxid) return currentGraph
+
+      const nodeIndex = currentGraph.nodes.findIndex((node) => node.txid === normalizedTxid)
+      if (nodeIndex === -1) return currentGraph
+
+      const currentNode = currentGraph.nodes[nodeIndex]
+      const normalizedCategory = classificationUpdate.classificationCategory?.trim() ?? ''
+      const nextClassificationCategory = normalizedCategory.length > 0 ? normalizedCategory : null
+      const nextClassificationState = classificationUpdate.classificationState
+
+      if (
+        currentNode.classification_category === nextClassificationCategory &&
+        currentNode.classification_state === nextClassificationState
+      ) {
+        return currentGraph
+      }
+
+      const wasUnclassified = currentNode.classification_state === 'None'
+      const isUnclassified = nextClassificationState === 'None'
+      const nextUnclassifiedNodes = Math.max(
+        0,
+        currentGraph.summary.unclassified_nodes +
+          (isUnclassified ? 1 : 0) -
+          (wasUnclassified ? 1 : 0),
+      )
+
+      const nextNodes = [...currentGraph.nodes]
+      nextNodes[nodeIndex] = {
+        ...currentNode,
+        classification_category: nextClassificationCategory,
+        classification_state: nextClassificationState,
+      }
+
+      return {
+        ...currentGraph,
+        nodes: nextNodes,
+        summary: {
+          ...currentGraph.summary,
+          unclassified_nodes: nextUnclassifiedNodes,
+          labeled_outputs: Math.max(
+            0,
+            currentGraph.summary.labeled_outputs + (classificationUpdate.labeledOutputsDelta ?? 0),
+          ),
+          labeled_transactions: Math.max(
+            0,
+            currentGraph.summary.labeled_transactions +
+              (classificationUpdate.labeledTransactionsDelta ?? 0),
+          ),
+        },
+      }
+    })
+  }, [classificationUpdate, updateGraph])
 
   const refreshGraph = useCallback(async () => {
     await reload({
