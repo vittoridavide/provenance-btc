@@ -123,10 +123,15 @@ describe('DetailPanel', () => {
   it('syncs graph badge when primary classification selection changes', async () => {
     const detail = makeDetail({ classification: null })
     mockDetail(detail)
-    const onGraphRefresh = vi.fn().mockResolvedValue(undefined)
+    const onGraphClassificationUpdate = vi.fn()
     vi.mocked(invoke).mockResolvedValue(undefined)
 
-    render(<DetailPanel selectedTxid={detail.txid} onGraphRefresh={onGraphRefresh} />)
+    render(
+      <DetailPanel
+        selectedTxid={detail.txid}
+        onGraphClassificationUpdate={onGraphClassificationUpdate}
+      />,
+    )
     const user = userEvent.setup()
     const txClassificationSelect = screen.getAllByRole('combobox')[0]
 
@@ -145,16 +150,27 @@ describe('DetailPanel', () => {
       )
     })
 
-    await waitFor(() => expect(onGraphRefresh).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(onGraphClassificationUpdate).toHaveBeenCalledWith({
+        txid: detail.txid,
+        classificationCategory: 'expense',
+        classificationState: 'Complete',
+      }),
+    )
   })
 
   it('syncs graph badge when classification is changed back to the original value', async () => {
     const detail = makeDetail()
     mockDetail(detail)
-    const onGraphRefresh = vi.fn().mockResolvedValue(undefined)
+    const onGraphClassificationUpdate = vi.fn()
     vi.mocked(invoke).mockResolvedValue(undefined)
 
-    render(<DetailPanel selectedTxid={detail.txid} onGraphRefresh={onGraphRefresh} />)
+    render(
+      <DetailPanel
+        selectedTxid={detail.txid}
+        onGraphClassificationUpdate={onGraphClassificationUpdate}
+      />,
+    )
     const user = userEvent.setup()
     const txClassificationSelect = screen.getAllByRole('combobox')[0]
 
@@ -187,7 +203,17 @@ describe('DetailPanel', () => {
       )
     })
 
-    await waitFor(() => expect(onGraphRefresh).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(onGraphClassificationUpdate).toHaveBeenCalledTimes(2))
+    expect(onGraphClassificationUpdate).toHaveBeenNthCalledWith(1, {
+      txid: detail.txid,
+      classificationCategory: 'expense',
+      classificationState: 'Complete',
+    })
+    expect(onGraphClassificationUpdate).toHaveBeenNthCalledWith(2, {
+      txid: detail.txid,
+      classificationCategory: 'revenue',
+      classificationState: 'Complete',
+    })
   })
 
   it('saves classification and refreshes detail', async () => {

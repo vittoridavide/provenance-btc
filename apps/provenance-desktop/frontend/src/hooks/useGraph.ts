@@ -27,6 +27,9 @@ type UseGraphResult = {
   loading: boolean
   error: string | null
   reload: (request?: GraphReloadRequest) => Promise<void>
+  updateGraph: (
+    updater: (currentGraph: ProvenanceGraph | null) => ProvenanceGraph | null,
+  ) => void
 }
 
 function toErrorMessage(error: unknown): string {
@@ -122,6 +125,13 @@ export function useGraph({
     }
   }, [depth, reloadKey, selectedRootTxid, trimmedInput])
 
+  const updateGraph = useCallback(
+    (updater: (currentGraph: ProvenanceGraph | null) => ProvenanceGraph | null) => {
+      setGraph((currentGraph) => updater(currentGraph))
+    },
+    [],
+  )
+
   useEffect(() => {
     void reload()
 
@@ -130,5 +140,5 @@ export function useGraph({
     }
   }, [reload])
 
-  return { graph, resolution, loading, error, reload }
+  return { graph, resolution, loading, error, reload, updateGraph }
 }
