@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
@@ -103,6 +105,31 @@ pub fn list_records(conn: &Connection) -> Result<Vec<StoredBip329Record>> {
     }
 
     Ok(records)
+}
+
+/// Return BIP-329 records linked to the given txids.
+/// - `tx` type: matched when `record_ref` is in `txids`.
+/// - `output` type: matched when the txid prefix of `record_ref` (before `:`) is in `txids`.
+/// - All other types are excluded from a graph-scoped export.
+pub fn list_records_for_txids(
+    conn: &Connection,
+    txids: &HashSet<String>,
+) -> Result<Vec<StoredBip329Record>> {
+    if txids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let all = list_records(conn)?;
+    Ok(all
+        .into_iter()
+        .filter(|r| match r.record_type.as_str() {
+            "tx" => txids.contains(&r.record_ref),
+            "output" => r
+                .record_ref
+                .split_once(':')
+                .is_some_and(|(txid, _)| txids.contains(txid)),
+            _ => false,
+        })
+        .collect())
 }
 
 fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredBip329Record> {

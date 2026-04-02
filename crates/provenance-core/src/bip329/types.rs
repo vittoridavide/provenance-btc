@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::{CoreError, Result};
@@ -16,10 +16,37 @@ pub struct Bip329Record {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_bool_like",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub spendable: Option<bool>,
     #[serde(default, flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+fn deserialize_optional_bool_like<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(Value::Bool(boolean)) => Ok(Some(boolean)),
+        Some(Value::String(text)) => match text.trim().to_ascii_lowercase().as_str() {
+            "true" => Ok(Some(true)),
+            "false" => Ok(Some(false)),
+            _ => Err(de::Error::custom(
+                "invalid spendable value: expected boolean or \"true\"/\"false\" string",
+            )),
+        },
+        Some(_) => Err(de::Error::custom(
+            "invalid spendable value: expected boolean or \"true\"/\"false\" string",
+        )),
+    }
 }
 
 impl Bip329Record {
@@ -126,5 +153,32 @@ mod tests {
         assert_eq!(json["label"], "coin");
         assert!(json.get("origin").is_none());
         assert!(json.get("spendable").is_none());
+    }
+
+    #[test]
+    fn parses_spendable_from_string_booleans() {
+        let txid = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let line_true =
+            format!(r#"{{"type":"output","ref":"{txid}:0","label":"coin","spendable":"true"}}"#);
+        let line_false =
+            format!(r#"{{"type":"output","ref":"{txid}:1","label":"coin","spendable":"FALSE"}}"#);
+
+        let parsed_true: Bip329Record =
+            serde_json::from_str(&line_true).expect("string true should parse");
+        let parsed_false: Bip329Record =
+            serde_json::from_str(&line_false).expect("string false should parse");
+
+        assert_eq!(parsed_true.spendable, Some(true));
+        assert_eq!(parsed_false.spendable, Some(false));
+    }
+
+    #[test]
+    fn rejects_invalid_spendable_string_values() {
+        let txid = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let line =
+            format!(r#"{{"type":"output","ref":"{txid}:0","label":"coin","spendable":"maybe"}}"#);
+
+        let err = serde_json::from_str::<Bip329Record>(&line).expect_err("invalid spendable");
+        assert!(err.to_string().contains("invalid spendable value"));
     }
 }

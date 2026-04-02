@@ -413,14 +413,19 @@ function App() {
     rpcUrl,
     rpcUsername,
   ])
-  const handleExportLabels = useCallback(async (outputPath: string) => {
-    const savedPath = await invoke<string>('cmd_export_labels', {
-      args: {
-        outputPath,
-      },
-    })
-    return savedPath
-  }, [])
+  const handleExportLabels = useCallback(
+    async (outputPath: string) => {
+      const filterTxids = graphData?.nodes.map((n) => n.txid) ?? null
+      const savedPath = await invoke<string>('cmd_export_labels', {
+        args: {
+          outputPath,
+          filterTxids,
+        },
+      })
+      return savedPath
+    },
+    [graphData],
+  )
   const handleApplyLabelImport = useCallback(
     async (inputPath: string, policy: Bip329ImportConflictPolicy) => {
       const result = await invoke<Bip329ImportApplyResult>('cmd_apply_labels_import', {

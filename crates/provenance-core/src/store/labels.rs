@@ -1,4 +1,6 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashSet;
+
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
@@ -83,11 +85,64 @@ pub fn get_tx_labels(conn: &Connection) -> Result<Vec<Label>> {
     get_labels_by_type(conn, "tx")
 }
 
+/// Return transaction labels restricted to the given txid set.
+pub fn get_tx_labels_for_txids(conn: &Connection, txids: &HashSet<String>) -> Result<Vec<Label>> {
+    if txids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = (1..=txids.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT ref_type, ref_id, label, created_at, updated_at
+         FROM labels
+         WHERE ref_type = 'tx' AND ref_id IN ({placeholders})
+         ORDER BY ref_id ASC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&str> = txids.iter().map(String::as_str).collect();
+    let rows = stmt.query_map(params_from_iter(params), |row| {
+        Ok(Label {
+            ref_type: row.get(0)?,
+            ref_id: row.get(1)?,
+            label: row.get(2)?,
+            created_at: row.get(3)?,
+            updated_at: row.get(4)?,
+        })
+    })?;
+    let mut labels = Vec::new();
+    for row in rows {
+        labels.push(row?);
+    }
+    Ok(labels)
+}
+
 /// Return all output labels.
 pub fn get_output_labels(conn: &Connection) -> Result<Vec<Label>> {
     get_labels_by_type(conn, "output")
 }
-/// Delete a label. Returns `true` if a row was actually removed.
+
+/// Return output labels whose txid prefix (before `:`) is in the given set.
+pub fn get_output_labels_for_txids(
+    conn: &Connection,
+    txids: &HashSet<String>,
+) -> Result<Vec<Label>> {
+    if txids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let all = get_output_labels(conn)?;
+    Ok(all
+        .into_iter()
+        .filter(|l| {
+            l.ref_id
+                .split_once(':')
+                .is_some_and(|(txid, _)| txids.contains(txid))
+        })
+        .collect())
+}
+
+/// Delete a label.
 pub fn delete_label(conn: &Connection, ref_type: &str, ref_id: &str) -> Result<bool> {
     let changed = conn.execute(
         "DELETE FROM labels WHERE ref_type = ?1 AND ref_id = ?2",

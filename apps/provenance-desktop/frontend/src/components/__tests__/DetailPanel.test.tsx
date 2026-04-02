@@ -107,16 +107,41 @@ describe('DetailPanel', () => {
     expect(screen.getByRole('button', { name: 'Save Classification' })).toBeInTheDocument()
   })
 
-  it('validates that classification is required on save', async () => {
+  it('shows delete label instead of clear classification in simple mode', () => {
+    const detail = makeDetail({ classification: null })
+    mockDetail(detail)
+
+    render(<DetailPanel selectedTxid={detail.txid} />)
+
+    expect(screen.getByRole('button', { name: 'Save Label' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Label' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear Classification' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save Classification' })).not.toBeInTheDocument()
+  })
+
+  it('shows only classification actions in accounting mode', () => {
+    const detail = makeDetail()
+    mockDetail(detail)
+
+    render(<DetailPanel selectedTxid={detail.txid} />)
+
+    expect(screen.getByRole('button', { name: 'Save Classification' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clear Classification' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete Label' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save Label' })).not.toBeInTheDocument()
+  })
+
+  it('save classification button is disabled when no classification is selected in accounting mode', async () => {
     const detail = makeDetail({ classification: null })
     mockDetail(detail)
 
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('button', { name: 'Save Classification' }))
+    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
 
-    expect(screen.getAllByText('Please select a classification').length).toBeGreaterThan(0)
+    const saveBtn = screen.getByRole('button', { name: 'Save Classification' })
+    expect(saveBtn).toBeDisabled()
     expect(invoke).not.toHaveBeenCalled()
   })
 
@@ -133,6 +158,8 @@ describe('DetailPanel', () => {
       />,
     )
     const user = userEvent.setup()
+
+    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
     const txClassificationSelect = screen.getAllByRole('combobox')[0]
 
     await user.selectOptions(txClassificationSelect, 'expense')
@@ -219,10 +246,18 @@ describe('DetailPanel', () => {
   it('saves classification and refreshes detail', async () => {
     const detail = makeDetail({ classification: null })
     const { reload } = mockDetail(detail)
+    const onGraphClassificationUpdate = vi.fn()
     vi.mocked(invoke).mockResolvedValue(undefined)
 
-    render(<DetailPanel selectedTxid={detail.txid} />)
+    render(
+      <DetailPanel
+        selectedTxid={detail.txid}
+        onGraphClassificationUpdate={onGraphClassificationUpdate}
+      />,
+    )
     const user = userEvent.setup()
+
+    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
     const txClassificationSelect = screen.getAllByRole('combobox')[0]
 
     await user.selectOptions(txClassificationSelect, 'revenue')
@@ -239,6 +274,90 @@ describe('DetailPanel', () => {
           }),
         }),
       )
+      expect(invoke).toHaveBeenCalledWith(
+        'cmd_set_label',
+        expect.objectContaining({
+          refType: 'tx',
+          refId: detail.txid,
+          label: 'Revenue',
+        }),
+      )
+    })
+
+    await waitFor(() =>
+      expect(reload).toHaveBeenCalledWith({
+        txid: detail.txid,
+        throwOnError: true,
+      }),
+    )
+
+    await waitFor(() =>
+      expect(onGraphClassificationUpdate).toHaveBeenCalledWith({
+        txid: detail.txid,
+        classificationCategory: 'revenue',
+        classificationState: 'Complete',
+        transactionLabel: 'Revenue',
+        labeledOutputsDelta: 0,
+        labeledTransactionsDelta: 0,
+      }),
+    )
+  })
+
+  it('pushes the saved simple label into the graph update payload', async () => {
+    const detail = makeDetail({ classification: null, label: null })
+    mockDetail(detail)
+    const onGraphClassificationUpdate = vi.fn()
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    render(
+      <DetailPanel
+        selectedTxid={detail.txid}
+        onGraphClassificationUpdate={onGraphClassificationUpdate}
+      />,
+    )
+    const user = userEvent.setup()
+
+    const labelTextarea = screen.getByPlaceholderText(
+      'Add a note to help identify this transaction...',
+    )
+    await user.clear(labelTextarea)
+    await user.type(labelTextarea, 'client payment')
+    await user.click(screen.getByRole('button', { name: 'Save Label' }))
+
+    await waitFor(() =>
+      expect(onGraphClassificationUpdate).toHaveBeenCalledWith({
+        txid: detail.txid,
+        classificationCategory: null,
+        classificationState: 'None',
+        transactionLabel: 'client payment',
+        labeledTransactionsDelta: 1,
+      }),
+    )
+  })
+
+  it('saves a plain text label in simple mode', async () => {
+    const detail = makeDetail({ classification: null, label: null })
+    const { reload } = mockDetail(detail)
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    render(<DetailPanel selectedTxid={detail.txid} />)
+    const user = userEvent.setup()
+
+    const labelTextarea = screen.getByPlaceholderText(
+      'Add a note to help identify this transaction...',
+    )
+    await user.type(labelTextarea, 'client payment')
+    await user.click(screen.getByRole('button', { name: 'Save Label' }))
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith(
+        'cmd_set_label',
+        expect.objectContaining({
+          refType: 'tx',
+          refId: detail.txid,
+          label: 'client payment',
+        }),
+      )
     })
 
     await waitFor(() =>
@@ -249,7 +368,7 @@ describe('DetailPanel', () => {
     )
   })
 
-  it('clears unsaved output drafts when no persisted records exist', async () => {
+  it('clears unsaved classification drafts without clearing output notes', async () => {
     const detail = makeDetail({
       classification: null,
       label: null,
@@ -265,28 +384,37 @@ describe('DetailPanel', () => {
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
 
+    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
     await user.click(screen.getByRole('button', { name: 'Show Outputs' }))
+    const outputSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement
     const outputNotesInputs = screen.getAllByPlaceholderText('Output-specific notes...')
+
+    await user.selectOptions(outputSelect, 'expense')
     await user.type(outputNotesInputs[0], 'draft output note')
     await user.click(screen.getByRole('button', { name: 'Clear Classification' }))
-    await waitFor(() => expect((outputNotesInputs[0] as HTMLInputElement).value).toBe(''))
 
-    await waitFor(() =>
-      expect(reload).toHaveBeenCalledWith({
-        txid: detail.txid,
-        throwOnError: true,
-      }),
-    )
+    await waitFor(() => expect(outputSelect.value).toBe(''))
+    expect(outputNotesInputs[0]).toHaveValue('draft output note')
+    expect(invoke).not.toHaveBeenCalled()
+    expect(reload).not.toHaveBeenCalled()
   })
 
-  it('clears tx and output labels/classifications', async () => {
+  it('clears classifications without deleting labels', async () => {
     const detail = makeDetail()
     const { reload } = mockDetail(detail)
+    const onGraphClassificationUpdate = vi.fn()
     vi.mocked(invoke).mockResolvedValue(undefined)
 
-    render(<DetailPanel selectedTxid={detail.txid} />)
+    render(
+      <DetailPanel
+        selectedTxid={detail.txid}
+        onGraphClassificationUpdate={onGraphClassificationUpdate}
+      />,
+    )
     const user = userEvent.setup()
 
+    await user.click(screen.getByRole('button', { name: 'Show Outputs' }))
+    const outputNotesInputs = screen.getAllByPlaceholderText('Output-specific notes...')
     await user.click(screen.getByRole('button', { name: 'Clear Classification' }))
 
     await waitFor(() => {
@@ -298,19 +426,13 @@ describe('DetailPanel', () => {
             expect.objectContaining({ refType: 'tx', refId: detail.txid }),
           ],
           [
-            'cmd_delete_label',
-            expect.objectContaining({ refType: 'tx', refId: detail.txid }),
-          ],
-          [
             'cmd_delete_classification',
-            expect.objectContaining({ refType: 'output', refId: `${detail.txid}:1` }),
-          ],
-          [
-            'cmd_delete_label',
             expect.objectContaining({ refType: 'output', refId: `${detail.txid}:1` }),
           ],
         ]),
       )
+      const deleteLabelCalls = calls.filter(([command]) => command === 'cmd_delete_label')
+      expect(deleteLabelCalls).toHaveLength(0)
     })
 
     await waitFor(() =>
@@ -319,9 +441,80 @@ describe('DetailPanel', () => {
         throwOnError: true,
       }),
     )
+
+    expect(screen.getByPlaceholderText('Add a note to help identify this transaction...')).toHaveValue(
+      'old tx label',
+    )
+    expect(outputNotesInputs[1]).toHaveValue('old output note')
+    expect(onGraphClassificationUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txid: detail.txid,
+        classificationCategory: null,
+        classificationState: 'None',
+      }),
+    )
   })
 
-  it('clears output data even when transaction classification is missing', async () => {
+  it('deletes only the transaction label without clearing classifications', async () => {
+    const detail = makeDetail()
+    const { reload } = mockDetail(detail)
+    const onGraphClassificationUpdate = vi.fn()
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    render(
+      <DetailPanel
+        selectedTxid={detail.txid}
+        onGraphClassificationUpdate={onGraphClassificationUpdate}
+      />,
+    )
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('tab', { name: 'Simple' }))
+    await user.click(screen.getByRole('button', { name: 'Delete Label' }))
+
+    await waitFor(() => {
+      const calls = vi.mocked(invoke).mock.calls
+      expect(calls).toEqual(
+        expect.arrayContaining([
+          [
+            'cmd_delete_label',
+            expect.objectContaining({ refType: 'tx', refId: detail.txid }),
+          ],
+        ]),
+      )
+
+      const deleteClassificationCalls = calls.filter(
+        ([command]) => command === 'cmd_delete_classification',
+      )
+      expect(deleteClassificationCalls).toHaveLength(0)
+
+      const deleteOutputLabelCalls = calls.filter(
+        ([command, payload]) =>
+          command === 'cmd_delete_label' &&
+          (payload as { refType?: string }).refType === 'output',
+      )
+      expect(deleteOutputLabelCalls).toHaveLength(0)
+    })
+
+    await waitFor(() =>
+      expect(reload).toHaveBeenCalledWith({
+        txid: detail.txid,
+        throwOnError: true,
+      }),
+    )
+
+    await waitFor(() =>
+      expect(onGraphClassificationUpdate).toHaveBeenCalledWith({
+        txid: detail.txid,
+        classificationCategory: 'revenue',
+        classificationState: 'Complete',
+        transactionLabel: null,
+        labeledTransactionsDelta: -1,
+      }),
+    )
+  })
+
+  it('clears output classifications even when transaction classification is missing', async () => {
     const detail = makeDetail({
       classification: null,
       label: null,
@@ -332,6 +525,7 @@ describe('DetailPanel', () => {
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
 
+    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
     await user.click(screen.getByRole('button', { name: 'Clear Classification' }))
 
     await waitFor(() => {
@@ -349,12 +543,10 @@ describe('DetailPanel', () => {
             'cmd_delete_classification',
             expect.objectContaining({ refType: 'output', refId: `${detail.txid}:1` }),
           ],
-          [
-            'cmd_delete_label',
-            expect.objectContaining({ refType: 'output', refId: `${detail.txid}:1` }),
-          ],
         ]),
       )
+      const deleteLabelCalls = calls.filter(([command]) => command === 'cmd_delete_label')
+      expect(deleteLabelCalls).toHaveLength(0)
     })
 
     await waitFor(() =>

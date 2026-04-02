@@ -322,7 +322,9 @@ function DataManagementSidebar({
               <h3 className="dm-section__title">Export Labels</h3>
             </div>
             <p className="dm-section__description">
-              Export all transaction and output labels as BIP-329 JSONL.
+              {graphSummary
+                ? `Export labels for the current graph (${graphSummary.total_nodes} transaction${graphSummary.total_nodes === 1 ? '' : 's'}) as BIP-329 JSONL.`
+                : 'Export all transaction and output labels as BIP-329 JSONL.'}
             </p>
             <div className="dm-button-group">
               <button
@@ -376,13 +378,9 @@ function DataManagementSidebar({
               <button
                 type="button"
                 className="dm-button dm-button--full-width dm-button--left"
-                onClick={() => void handleExportCsv('outputs')}
-                disabled={!canExportCsv || outputLabelCount === 0}
-                aria-label={
-                  outputLabelCount === 0
-                    ? 'Outputs CSV (no labeled outputs)'
-                    : 'Outputs CSV'
-                }
+              onClick={() => void handleExportCsv('outputs')}
+                disabled={!canExportCsv}
+                aria-label="Outputs CSV"
               >
                 <FileSpreadsheet size={16} aria-hidden="true" className="dm-icon--green" />
                 <div className="dm-button__text-container">

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use rusqlite::Connection;
 
@@ -36,9 +36,18 @@ enum ExportLineSource {
     PreservedRecord,
 }
 
-pub fn export_bip329(conn: &Connection) -> Result<GeneratedBip329Export> {
-    let tx_labels = labels::get_tx_labels(conn)?;
-    let output_labels = labels::get_output_labels(conn)?;
+pub fn export_bip329(
+    conn: &Connection,
+    filter_txids: Option<&HashSet<String>>,
+) -> Result<GeneratedBip329Export> {
+    let tx_labels = match filter_txids {
+        Some(txids) => labels::get_tx_labels_for_txids(conn, txids)?,
+        None => labels::get_tx_labels(conn)?,
+    };
+    let output_labels = match filter_txids {
+        Some(txids) => labels::get_output_labels_for_txids(conn, txids)?,
+        None => labels::get_output_labels(conn)?,
+    };
 
     let mut local_labels = BTreeMap::new();
     for label in tx_labels.into_iter().chain(output_labels) {
@@ -48,7 +57,11 @@ pub fn export_bip329(conn: &Connection) -> Result<GeneratedBip329Export> {
     let mut covered_local_refs = BTreeSet::new();
     let mut export_lines = Vec::new();
 
-    for stored in bip329_records::list_records(conn)? {
+    let stored_records = match filter_txids {
+        Some(txids) => bip329_records::list_records_for_txids(conn, txids)?,
+        None => bip329_records::list_records(conn)?,
+    };
+    for stored in stored_records {
         let mut record = stored.payload()?;
         if stored.tracks_local_label && record.supports_local_labels() {
             if let Some(label) = local_labels
@@ -132,8 +145,11 @@ pub fn export_bip329(conn: &Connection) -> Result<GeneratedBip329Export> {
     })
 }
 
-pub fn export_bip329_jsonl(conn: &Connection) -> Result<String> {
-    Ok(export_bip329(conn)?.jsonl_contents)
+pub fn export_bip329_jsonl(
+    conn: &Connection,
+    filter_txids: Option<&HashSet<String>>,
+) -> Result<String> {
+    Ok(export_bip329(conn, filter_txids)?.jsonl_contents)
 }
 
 fn should_emit_bound_record(record: &Bip329Record) -> bool {
@@ -151,6 +167,8 @@ mod tests {
 
     use super::{export_bip329, export_bip329_jsonl};
 
+    const TXID_C: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
     const TXID_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const TXID_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const VALID_ADDR: &str = "1BoatSLRHtKNngkdXEeobR76b53LETtpyT";
@@ -162,7 +180,7 @@ mod tests {
         labels::set_label(db.conn(), "output", &format!("{TXID_A}:0"), "salary-output")
             .expect("insert output");
 
-        let jsonl = export_bip329_jsonl(db.conn()).expect("export works");
+        let jsonl = export_bip329_jsonl(db.conn(), None).expect("export works");
         let lines: Vec<String> = jsonl.lines().map(str::to_owned).collect();
 
         assert_eq!(lines.len(), 2);
@@ -196,7 +214,7 @@ mod tests {
         )
         .expect("insert preserved");
 
-        let jsonl = export_bip329_jsonl(db.conn()).expect("export works");
+        let jsonl = export_bip329_jsonl(db.conn(), None).expect("export works");
         let lines: Vec<String> = jsonl.lines().map(str::to_owned).collect();
 
         assert_eq!(
@@ -224,7 +242,7 @@ mod tests {
         assert_eq!(report.preserved_only, 1);
         assert_eq!(report.skipped_unsupported_type, 1);
 
-        let exported = export_bip329_jsonl(source_db.conn()).expect("export works");
+        let exported = export_bip329_jsonl(source_db.conn(), None).expect("export works");
 
         let target_db = Database::open(":memory:").expect("target db opens");
         let target_report =
@@ -268,7 +286,7 @@ mod tests {
         .expect("import works");
         labels::delete_label(db.conn(), "tx", TXID_A).expect("delete works");
 
-        let jsonl = export_bip329_jsonl(db.conn()).expect("export works");
+        let jsonl = export_bip329_jsonl(db.conn(), None).expect("export works");
         assert!(jsonl.is_empty());
     }
 
@@ -284,11 +302,99 @@ mod tests {
         .expect("import works");
         labels::delete_label(db.conn(), "tx", TXID_A).expect("delete works");
 
-        let jsonl = export_bip329_jsonl(db.conn()).expect("export works");
+        let jsonl = export_bip329_jsonl(db.conn(), None).expect("export works");
         assert_eq!(
             jsonl,
             format!(r#"{{"type":"tx","ref":"{TXID_A}","origin":"wallet-a","custom":true}}"#)
         );
+    }
+
+    #[test]
+    fn filtered_export_restricts_to_matching_txids() {
+        let db = Database::open(":memory:").expect("db opens");
+        // TXID_A: tx label + output label
+        labels::set_label(db.conn(), "tx", TXID_A, "salary-a").expect("insert tx-a");
+        labels::set_label(db.conn(), "output", &format!("{TXID_A}:0"), "out-a-0")
+            .expect("insert out-a-0");
+        // TXID_B: tx label only
+        labels::set_label(db.conn(), "tx", TXID_B, "salary-b").expect("insert tx-b");
+        // TXID_C: tx label only (should be excluded by filter)
+        labels::set_label(db.conn(), "tx", TXID_C, "salary-c").expect("insert tx-c");
+
+        let filter: std::collections::HashSet<String> = [TXID_A.to_string(), TXID_B.to_string()]
+            .into_iter()
+            .collect();
+        let jsonl = export_bip329_jsonl(db.conn(), Some(&filter)).expect("filtered export works");
+        let lines: Vec<&str> = jsonl.lines().collect();
+
+        // 3 records for TXID_A and TXID_B, none for TXID_C
+        assert_eq!(lines.len(), 3, "expected 3 lines, got: {jsonl}");
+        assert!(
+            lines.iter().all(|l| !l.contains(TXID_C)),
+            "TXID_C should be absent"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains(TXID_A) && l.contains("\"type\":\"tx\"")),
+            "tx label for TXID_A expected"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains(&format!("{TXID_A}:0"))),
+            "output label for TXID_A expected"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains(TXID_B) && l.contains("\"type\":\"tx\"")),
+            "tx label for TXID_B expected"
+        );
+    }
+
+    #[test]
+    fn filtered_export_excludes_non_tx_output_preserved_records() {
+        let db = Database::open(":memory:").expect("db opens");
+        labels::set_label(db.conn(), "tx", TXID_A, "salary").expect("insert tx");
+        // Import an addr-type preserved record (not linked to a txid)
+        import_bip329_jsonl(
+            db.conn(),
+            &format!(
+                r#"{{"type":"addr","ref":"{VALID_ADDR}","label":"vendor","origin":"wallet-a"}}"#
+            ),
+        )
+        .expect("import works");
+
+        let filter: std::collections::HashSet<String> = [TXID_A.to_string()].into_iter().collect();
+        let jsonl = export_bip329_jsonl(db.conn(), Some(&filter)).expect("filtered export works");
+        let lines: Vec<&str> = jsonl.lines().collect();
+
+        // Only the tx label for TXID_A; addr record is excluded by filter
+        assert_eq!(lines.len(), 1, "expected 1 line, got: {jsonl}");
+        assert!(lines[0].contains(TXID_A));
+        assert!(!jsonl.contains(VALID_ADDR));
+    }
+
+    #[test]
+    fn filtered_export_with_empty_set_returns_empty() {
+        let db = Database::open(":memory:").expect("db opens");
+        labels::set_label(db.conn(), "tx", TXID_A, "salary").expect("insert");
+
+        let filter: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let jsonl =
+            export_bip329_jsonl(db.conn(), Some(&filter)).expect("empty filter export works");
+        assert!(jsonl.is_empty());
+    }
+
+    #[test]
+    fn unfiltered_export_returns_all_records() {
+        let db = Database::open(":memory:").expect("db opens");
+        labels::set_label(db.conn(), "tx", TXID_A, "salary-a").expect("insert a");
+        labels::set_label(db.conn(), "tx", TXID_B, "salary-b").expect("insert b");
+        labels::set_label(db.conn(), "tx", TXID_C, "salary-c").expect("insert c");
+
+        let jsonl = export_bip329_jsonl(db.conn(), None).expect("unfiltered export works");
+        let lines: Vec<&str> = jsonl.lines().collect();
+        assert_eq!(lines.len(), 3);
     }
 
     #[test]
@@ -303,7 +409,7 @@ mod tests {
         )
         .expect("import works");
 
-        let export = export_bip329(db.conn()).expect("export works");
+        let export = export_bip329(db.conn(), None).expect("export works");
 
         assert_eq!(export.record_count, 2);
         assert_eq!(export.supported_label_count, 1);

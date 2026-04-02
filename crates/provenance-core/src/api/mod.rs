@@ -1,6 +1,8 @@
 pub mod input_resolver;
 pub mod types;
 
+use std::collections::HashSet;
+
 use self::input_resolver::{
     resolve_graph_input, CapabilityProvider, InputResolverProvider,
     ADDRESS_INPUT_UNAVAILABLE_REASON,
@@ -110,8 +112,11 @@ pub fn apply_bip329_import(
 }
 
 #[cfg(feature = "store-sqlite")]
-pub fn export_bip329(conn: &Connection) -> Result<types::Bip329ExportResult> {
-    let generated = crate::bip329::export_bip329(conn)?;
+pub fn export_bip329(
+    conn: &Connection,
+    filter_txids: Option<&HashSet<String>>,
+) -> Result<types::Bip329ExportResult> {
+    let generated = crate::bip329::export_bip329(conn, filter_txids)?;
     Ok(types::Bip329ExportResult {
         suggested_filename: "provenance-bip329-labels.jsonl".to_string(),
         record_count: generated.record_count,

@@ -133,6 +133,19 @@ pub fn import_bip329_jsonl_with_policy(
     }
 }
 
+fn normalize_supported_ref(record: &Bip329Record) -> Option<String> {
+    match record.standard_type() {
+        Some(StandardRecordType::Tx) => Some(record.r#ref.to_ascii_lowercase()),
+        Some(StandardRecordType::Output) => {
+            let (txid, vout) = record.r#ref.split_once(':')?;
+            let normalized_txid = txid.to_ascii_lowercase();
+            let normalized_vout = vout.parse::<u32>().ok()?;
+            Some(format!("{normalized_txid}:{normalized_vout}"))
+        }
+        _ => None,
+    }
+}
+
 fn apply_import(
     conn: &Connection,
     input: &str,
@@ -226,7 +239,7 @@ struct EvaluationOutput {
     lines: Vec<EvaluatedLine>,
 }
 
-fn evaluate_input(conn: &Connection, input: &str) -> Result<EvaluationOutput> {
+fn evaluate_input(_conn: &Connection, input: &str) -> Result<EvaluationOutput> {
     let mut parsed_lines = Vec::new();
     let mut evaluated_lines = Vec::new();
     let mut preview = ImportPreview::default();
@@ -260,7 +273,7 @@ fn evaluate_input(conn: &Connection, input: &str) -> Result<EvaluationOutput> {
         }
     }
 
-    let ambiguous_refs = ambiguous_supported_refs(conn, &supported_label_refs, &parsed_lines)?;
+    let ambiguous_refs = ambiguous_supported_refs(&supported_label_refs, &parsed_lines);
 
     for parsed in parsed_lines {
         let (disposition, kind, message) = match parsed.provisional {
@@ -337,12 +350,15 @@ fn evaluate_input(conn: &Connection, input: &str) -> Result<EvaluationOutput> {
 }
 
 fn parse_line(line_number: usize, line: &str) -> std::result::Result<ParsedLine, String> {
-    let record: Bip329Record = serde_json::from_str(line)
+    let mut record: Bip329Record = serde_json::from_str(line)
         .map_err(|err| format!("json parse error on line {line_number}: {err}"))?;
 
     if let Some(standard_type) = record.standard_type() {
         validate_ref(&record.r#type, &record.r#ref)
             .map_err(|err| format!("invalid record on line {line_number}: {err}"))?;
+        if let Some(normalized_ref) = normalize_supported_ref(&record) {
+            record.r#ref = normalized_ref;
+        }
 
         if record.spendable.is_some() && standard_type != StandardRecordType::Output {
             return Err(format!(
@@ -386,10 +402,9 @@ fn parse_line(line_number: usize, line: &str) -> std::result::Result<ParsedLine,
 }
 
 fn ambiguous_supported_refs(
-    conn: &Connection,
     refs: &BTreeSet<(String, String)>,
     parsed_lines: &[ParsedLine],
-) -> Result<BTreeSet<(String, String)>> {
+) -> BTreeSet<(String, String)> {
     let mut current_candidates: BTreeMap<(String, String), Vec<AmbiguityCandidate>> =
         BTreeMap::new();
 
@@ -407,11 +422,10 @@ fn ambiguous_supported_refs(
 
     let mut ambiguous = BTreeSet::new();
     for (record_type, record_ref) in refs {
-        let mut candidates = current_candidates
+        let candidates = current_candidates
             .get(&(record_type.clone(), record_ref.clone()))
             .cloned()
             .unwrap_or_default();
-        candidates.extend(existing_candidates(conn, record_type, record_ref)?);
 
         let non_empty_origins: BTreeSet<&str> = candidates
             .iter()
@@ -432,31 +446,7 @@ fn ambiguous_supported_refs(
             ambiguous.insert((record_type.clone(), record_ref.clone()));
         }
     }
-
-    Ok(ambiguous)
-}
-
-fn existing_candidates(
-    conn: &Connection,
-    record_type: &str,
-    record_ref: &str,
-) -> Result<Vec<AmbiguityCandidate>> {
-    let mut out = Vec::new();
-    for stored in bip329_records::get_records_by_ref(conn, record_type, record_ref)? {
-        let payload = stored.payload()?;
-        let label = if stored.tracks_local_label {
-            labels::get_label(conn, record_type, record_ref)?.map(|stored_label| stored_label.label)
-        } else {
-            payload.label.clone()
-        };
-
-        out.push(AmbiguityCandidate {
-            origin_key: stored.origin_key,
-            label,
-        });
-    }
-
-    Ok(out)
+    ambiguous
 }
 
 fn increment_preview_count(preview: &mut ImportPreview, disposition: ImportDisposition) {
@@ -630,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn existing_multi_origin_state_makes_new_supported_import_ambiguous() {
+    fn existing_multi_origin_state_does_not_block_new_supported_import() {
         let db = Database::open(":memory:").expect("db opens");
         let base_record = crate::bip329::Bip329Record {
             r#type: "tx".to_owned(),
@@ -647,18 +637,40 @@ mod tests {
             true,
         )
         .expect("seed succeeds");
+        labels::set_label(db.conn(), "tx", TXID_A, "previous-local").expect("seed local label");
 
         let preview = preview_bip329_jsonl(
             db.conn(),
             &format!(r#"{{"type":"tx","ref":"{TXID_A}","label":"salary","origin":"wallet-b"}}"#),
         )
         .expect("preview succeeds");
-
-        assert_eq!(preview.ambiguous_supported, 1);
+        assert_eq!(preview.apply_supported, 1);
+        assert_eq!(preview.ambiguous_supported, 0);
         assert_eq!(
             preview.lines[0].disposition,
-            ImportDisposition::AmbiguousSupported
+            ImportDisposition::ApplySupported
         );
+    }
+
+    #[test]
+    fn prefer_import_overwrites_existing_local_label_for_same_ref() {
+        let db = Database::open(":memory:").expect("db opens");
+        labels::set_label(db.conn(), "output", &format!("{TXID_A}:1"), "old-local")
+            .expect("seed local output label");
+
+        let report = import_bip329_jsonl(
+            db.conn(),
+            &format!(r#"{{"type":"output","ref":"{TXID_A}:1","label":"new-imported"}}"#),
+        )
+        .expect("import succeeds");
+
+        assert_eq!(report.imported, 1);
+        assert_eq!(report.ambiguous_supported, 0);
+
+        let out_label = labels::get_label(db.conn(), "output", &format!("{TXID_A}:1"))
+            .expect("query succeeds")
+            .expect("output label exists");
+        assert_eq!(out_label.label, "new-imported");
     }
 
     #[test]
@@ -713,5 +725,39 @@ mod tests {
             bip329_records::get_records_by_ref(db.conn(), "tx", TXID_A).expect("query succeeds");
         assert_eq!(stored.len(), 1);
         assert!(!stored[0].tracks_local_label);
+    }
+
+    #[test]
+    fn import_normalizes_output_ref_case_and_vout_for_local_lookup() {
+        let db = Database::open(":memory:").expect("db opens");
+        let imported_txid = TXID_A.to_ascii_uppercase();
+        let input =
+            format!(r#"{{"type":"output","ref":"{imported_txid}:01","label":"salary-output"}}"#);
+
+        let report = import_bip329_jsonl(db.conn(), &input).expect("import succeeds");
+        assert_eq!(report.imported, 1);
+
+        let canonical_ref = format!("{TXID_A}:1");
+        let output_label = labels::get_label(db.conn(), "output", &canonical_ref)
+            .expect("query succeeds")
+            .expect("output label exists");
+        assert_eq!(output_label.label, "salary-output");
+    }
+
+    #[test]
+    fn imports_output_label_when_spendable_is_string_boolean() {
+        let db = Database::open(":memory:").expect("db opens");
+        let input = format!(
+            r#"{{"type":"output","ref":"{TXID_A}:1","label":"Hola 2","spendable":"true"}}"#
+        );
+
+        let report = import_bip329_jsonl(db.conn(), &input).expect("import succeeds");
+        assert_eq!(report.imported, 1);
+        assert_eq!(report.skipped_invalid, 0);
+
+        let out_label = labels::get_label(db.conn(), "output", &format!("{TXID_A}:1"))
+            .expect("query succeeds")
+            .expect("output label exists");
+        assert_eq!(out_label.label, "Hola 2");
     }
 }

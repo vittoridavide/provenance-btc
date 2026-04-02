@@ -23,6 +23,7 @@ use provenance_core::rpc::types::CoreStatus;
 use provenance_core::store::classifications;
 use provenance_core::store::db::Database;
 use provenance_core::store::labels;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io::ErrorKind;
@@ -198,6 +199,15 @@ struct AppState {
 #[serde(rename_all = "camelCase")]
 struct ExportLabelsArgs {
     output_path: String,
+    #[serde(default)]
+    filter_txids: Option<Vec<String>>,
+}
+
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct PreviewLabelsExportArgs {
+    #[serde(default)]
+    filter_txids: Option<Vec<String>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -641,11 +651,13 @@ async fn cmd_set_classification(
 #[tauri::command]
 async fn cmd_preview_labels_export(
     state: tauri::State<'_, AppState>,
+    args: PreviewLabelsExportArgs,
 ) -> Result<Bip329ExportResult, String> {
     let db_path = (*state.db_path).clone();
+    let filter_txids: Option<HashSet<String>> = args.filter_txids.map(|v| v.into_iter().collect());
     tauri::async_runtime::spawn_blocking(move || {
         let db = open_db(&db_path)?;
-        core_export_bip329(db.conn()).map_err(|e| e.to_string())
+        core_export_bip329(db.conn(), filter_txids.as_ref()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -658,9 +670,11 @@ async fn cmd_export_labels(
 ) -> Result<String, String> {
     let db_path = (*state.db_path).clone();
     let output_path = args.output_path;
+    let filter_txids: Option<HashSet<String>> = args.filter_txids.map(|v| v.into_iter().collect());
     tauri::async_runtime::spawn_blocking(move || {
         let db = open_db(&db_path)?;
-        let export = core_export_bip329(db.conn()).map_err(|e| e.to_string())?;
+        let export =
+            core_export_bip329(db.conn(), filter_txids.as_ref()).map_err(|e| e.to_string())?;
         write_text_file(&output_path, &export.jsonl_contents, "labels export")?;
         Ok(output_path)
     })

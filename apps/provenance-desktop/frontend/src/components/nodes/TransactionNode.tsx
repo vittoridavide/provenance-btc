@@ -190,6 +190,8 @@ function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
   const formattedVsize = hasVsizeMetric ? formatInteger(data.vsize!) : ''
   const formattedFee = hasFeeMetric ? formatFeeValue(data.fee_sat!) : ''
   const displayOutputClassification = data.labeled_output_count > 0 && data.total_output_count > 0
+  const displayNodeLabel = data.node_label?.trim() ?? ''
+  const showHeaderBadges = !!data.classification_label || displayNodeLabel.length > 0
 
   return (
     <div
@@ -226,13 +228,20 @@ function TransactionNode({ data, selected }: NodeProps<GraphFlowNodeData>) {
           </div>
         </div>
 
-        {data.classification_label && (
+        {showHeaderBadges && (
           <div className="transaction-node-card__classification-row">
-            <span
-              className={`transaction-node-card__classification-badge transaction-node-card__classification-badge--${data.classification_key ?? 'other'}`}
-            >
-              {data.classification_label}
-            </span>
+            {data.classification_label && (
+              <span
+                className={`transaction-node-card__classification-badge transaction-node-card__classification-badge--${data.classification_key ?? 'other'}`}
+              >
+                {data.classification_label}
+              </span>
+            )}
+            {displayNodeLabel.length > 0 && (
+              <span className="transaction-node-card__label-badge" title={displayNodeLabel}>
+                <span className="transaction-node-card__label-badge-text">{displayNodeLabel}</span>
+              </span>
+            )}
           </div>
         )}
       </header>
