@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyGraphClassificationUpdate,
   type GraphClassificationUpdate,
-} from '../GraphCanvas'
+} from '../../utils/graphClassificationUpdate'
 import type { ProvenanceGraph } from '../../types/api'
 
 const TXID = 'a'.repeat(64)

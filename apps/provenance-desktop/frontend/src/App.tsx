@@ -5,13 +5,13 @@ import DetailPanel from './components/DetailPanel'
 import DataManagementSidebar from './components/DataManagementSidebar'
 import GraphCanvas, {
   type GraphCanvasTopBarActions,
-  type GraphClassificationUpdate,
 } from './components/GraphCanvas'
 import RootCandidatePicker from './components/RootCandidatePicker'
 import RpcConnectionModal, { type RpcAuthMode } from './components/RpcConnectionModal'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import { useGraphInputCapabilities } from './hooks/useGraphInputCapabilities'
+import type { GraphClassificationUpdate } from './utils/graphClassificationUpdate'
 import type {
   Bip329ImportApplyResult,
   Bip329ImportConflictPolicy,

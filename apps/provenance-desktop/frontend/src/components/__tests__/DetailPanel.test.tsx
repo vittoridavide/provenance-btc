@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { invoke } from '@tauri-apps/api/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -85,6 +85,20 @@ function mockDetail(detail: TransactionDetail) {
   return { reload }
 }
 
+function getLabelModeTab(name: 'Simple' | 'Accounting') {
+  return within(screen.getByRole('tablist', { name: 'Label mode' })).getByRole('tab', {
+    name,
+  })
+}
+
+function getOutputModeTab(name: 'Simple' | 'Accounting') {
+  return within(
+    screen.getByRole('tablist', { name: 'Output classification mode' }),
+  ).getByRole('tab', {
+    name,
+  })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -138,7 +152,7 @@ describe('DetailPanel', () => {
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
+    await user.click(getLabelModeTab('Accounting'))
 
     const saveBtn = screen.getByRole('button', { name: 'Save Classification' })
     expect(saveBtn).toBeDisabled()
@@ -159,7 +173,7 @@ describe('DetailPanel', () => {
     )
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
+    await user.click(getLabelModeTab('Accounting'))
     const txClassificationSelect = screen.getAllByRole('combobox')[0]
 
     await user.selectOptions(txClassificationSelect, 'expense')
@@ -257,7 +271,7 @@ describe('DetailPanel', () => {
     )
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
+    await user.click(getLabelModeTab('Accounting'))
     const txClassificationSelect = screen.getAllByRole('combobox')[0]
 
     await user.selectOptions(txClassificationSelect, 'revenue')
@@ -330,6 +344,7 @@ describe('DetailPanel', () => {
         classificationCategory: null,
         classificationState: 'None',
         transactionLabel: 'client payment',
+        labeledOutputsDelta: 0,
         labeledTransactionsDelta: 1,
       }),
     )
@@ -384,7 +399,8 @@ describe('DetailPanel', () => {
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
+    await user.click(getLabelModeTab('Accounting'))
+    await user.click(getOutputModeTab('Accounting'))
     await user.click(screen.getByRole('button', { name: 'Show Outputs' }))
     const outputSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement
     const outputNotesInputs = screen.getAllByPlaceholderText('Output-specific notes...')
@@ -392,8 +408,9 @@ describe('DetailPanel', () => {
     await user.selectOptions(outputSelect, 'expense')
     await user.type(outputNotesInputs[0], 'draft output note')
     await user.click(screen.getByRole('button', { name: 'Clear Classification' }))
-
-    await waitFor(() => expect(outputSelect.value).toBe(''))
+    await waitFor(() => expect(getOutputModeTab('Simple')).toHaveAttribute('aria-selected', 'true'))
+    const simpleOutputNotesInputs = screen.getAllByPlaceholderText('Output Label...')
+    expect(simpleOutputNotesInputs[0]).toHaveValue('draft output note')
     expect(outputNotesInputs[0]).toHaveValue('draft output note')
     expect(invoke).not.toHaveBeenCalled()
     expect(reload).not.toHaveBeenCalled()
@@ -469,7 +486,7 @@ describe('DetailPanel', () => {
     )
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('tab', { name: 'Simple' }))
+    await user.click(getLabelModeTab('Simple'))
     await user.click(screen.getByRole('button', { name: 'Delete Label' }))
 
     await waitFor(() => {
@@ -525,7 +542,7 @@ describe('DetailPanel', () => {
     render(<DetailPanel selectedTxid={detail.txid} />)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('tab', { name: 'Accounting' }))
+    await user.click(getLabelModeTab('Accounting'))
     await user.click(screen.getByRole('button', { name: 'Clear Classification' }))
 
     await waitFor(() => {
